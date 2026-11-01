@@ -1,6 +1,7 @@
 // The overlay: one transparent, click-through window that sits over a whole display, above everything.
 import { BrowserWindow, ipcMain, type Display } from 'electron'
 import path from 'node:path'
+import { speaksCaption } from '../shared/caption'
 import type { DrawPayload } from '../shared/marks'
 import * as voice from './voice'
 
@@ -52,9 +53,9 @@ export async function draw(display: Display, payload: DrawPayload): Promise<void
     voice.stop()
     voice.forget()
   }
-  // Render the words ahead (the page reads the caption when no mark has any), and start once the first are ready.
-  const lines = payload.marks.flatMap(m => m.say ?? [])
-  const first = voice.prepare(lines.length ? lines : payload.caption ? [payload.caption] : [])
+  // Render the words ahead, and start once the first are ready.
+  const lines = [...payload.marks.flatMap(m => m.say ?? []), ...(speaksCaption(payload) ? [payload.caption!] : [])]
+  const first = voice.prepare(lines)
   await Promise.all([loaded, Promise.race([first, new Promise(r => setTimeout(r, FIRST_WORDS_WAIT_MS))])])
   const b = display.bounds
   const cur = w.getBounds()

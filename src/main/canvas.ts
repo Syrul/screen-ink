@@ -13,7 +13,7 @@ export function remember(shot: Capture): void {
   last = { displayId: shot.display.id, width: shot.width, elements: shot.elements }
 }
 
-type Drawing = Omit<DrawPayload, 'ppu' | 'ink' | 'marks'> & { marks: MarkInput[] }
+export type Drawing = Omit<DrawPayload, 'ppu' | 'ink' | 'marks'> & { marks: MarkInput[] }
 
 /** Draws on the last screenshot's display. `missing` lists element ids the screenshot didn't have; their marks are left out. */
 export async function draw(args: Drawing): Promise<{ display: Display; drawn: number; missing: string[] }> {
@@ -22,7 +22,7 @@ export async function draw(args: Drawing): Promise<{ display: Display; drawn: nu
   if (!d) throw new Error('The display from the last screenshot is gone. Take a new screenshot.')
   const ppu = d.size.width / last.width
   const { marks, missing } = place(args.marks, await last.elements, ppu)
-  if (!marks.length) throw new Error(`The last screenshot has no element ${missing.join(', ')}. Take a new screenshot and use its ids.`)
+  if (args.marks.length && !marks.length) throw new Error(`The last screenshot has no element ${missing.join(', ')}. Take a new screenshot and use its ids.`)
   await overlay.draw(d, { ...args, marks, ppu, ink: INK })
   return { display: d, drawn: marks.length, missing }
 }

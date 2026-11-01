@@ -157,6 +157,8 @@ export interface DrawPayload {
   caption?: string
   append?: boolean
   fadeAfter?: number
+  /** Whether to read the caption out. By default it is read when no mark has words of its own. */
+  speakCaption?: boolean
   ppu: number
   ink: string
 }

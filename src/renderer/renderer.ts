@@ -3,6 +3,7 @@
 // A mark's `say` is spoken as it starts, and the drawing waits at the mark's end until the words are out.
 // Opened in a plain browser (no `window.inkBridge`) it draws the demo over a mock window instead.
 import { getStroke } from 'perfect-freehand'
+import { speaksCaption } from '../shared/caption'
 import { DEMO_CAPTION, DEMO_FIGURE_CAPTION, DEMO_FIGURE_MARKS, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
 import type { Box, DrawPayload, Mark, Point } from '../shared/marks'
 import { clamp, easeBack, easePen, el, now, textWidth, UI_FONT, type Beat } from './common'
@@ -312,7 +313,7 @@ function draw(p: DrawPayload): void {
     cursor += GAP
   }
   // Nothing narrated: read the caption out over the whole drawing instead.
-  if (p.caption && !p.marks.some(m => m.say)) narrate(p.caption, start, cursor)
+  if (speaksCaption(p)) narrate(p.caption!, start, cursor)
   endsAt = cursor
 
   if (p.caption) {

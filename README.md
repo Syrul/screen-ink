@@ -41,8 +41,10 @@ claude -p --safe-mode --tools WebSearch --allowedTools WebSearch --model sonnet 
 ```
 
 with the screenshot and your question, and draws the answer for 45 seconds. `--safe-mode` keeps your login
-but skips your hooks, CLAUDE.md, skills and MCP servers, so the call is quick (about 3–7 seconds with
-Sonnet, or about 12 when the answer is a 3D figure) and none of your setup leaks in. It also skips the
+but skips your hooks, CLAUDE.md, skills and MCP servers, so the call is quick and none of your setup leaks
+in. The answer streams: the bar goes and the first mark is drawn as soon as Claude has written it (about 1.5
+seconds with Sonnet), and the rest follow as they come, so a 3D figure or a long walkthrough starts drawing
+long before it is all written. It also skips the
 `effortLevel` in your settings, so the CLI's default effort applies unless you set `SCREEN_INK_EFFORT`;
 higher effort places marks more carefully but answers more slowly.
 
@@ -50,8 +52,14 @@ Claude can search the web when the answer depends on something the screen doesn'
 changed (versions, prices, docs, news). The bar shows each search while it runs, and a search adds about 10
 seconds. It's Claude Code's own WebSearch tool, pre-approved because there's no one to answer a permission
 prompt. `SCREEN_INK_TOOLS` picks other built-in tools (comma-separated, `""` for none). WebFetch is off by
-default, since a page on your screen could talk Claude into sending what it sees to any URL. Esc closes the bar and cancels a question in flight; pressing the
-shortcut again does the same.
+default, since a page on your screen could talk Claude into sending what it sees to any URL. Esc closes the
+bar and cancels a question in flight; pressing the shortcut again does the same, and pressing it while an
+answer is still drawing stops that answer and opens a new bar.
+
+**Follow-ups.** The `claude` process starts when the bar opens, so it's ready by the time you've typed, and
+stays for two minutes after each answer. Ask again within that time and the bar says *Ask a follow-up*: the
+question continues the conversation ("and then?", "the other one"), with a fresh screenshot of the screen as
+it is now. ⌘N in the bar starts a new conversation instead.
 
 The first `screenshot` asks macOS for Screen Recording access. In development the permission belongs to
 **Electron**. Turn it on in System Settings → Privacy & Security → Screen & System Audio Recording, then
@@ -191,7 +199,8 @@ It draws with three.js: toon shading, inked creases and a drawn outline, so it m
 | [src/main/main.ts](src/main/main.ts) | Menu bar, token, shortcuts, startup |
 | [src/main/mcp.ts](src/main/mcp.ts) | MCP server and tool descriptions (the drawing "skill" the agent reads) |
 | [src/main/ask.ts](src/main/ask.ts) | The shortcut: screenshot, prompt bar, answer |
-| [src/main/brain.ts](src/main/brain.ts) | Runs `claude -p` on a screenshot and question; its system prompt |
+| [src/main/brain.ts](src/main/brain.ts) | Keeps a `claude -p` conversation going and streams its answers; its system prompt |
+| [src/main/stream.ts](src/main/stream.ts) | Picks each finished mark out of the answer's JSON as it is written |
 | [src/main/canvas.ts](src/main/canvas.ts) | The last screenshot's coordinate space, shared by MCP and the shortcut |
 | [src/main/capture.ts](src/main/capture.ts) | Screenshots and the unit → point scale |
 | [src/main/sense.ts](src/main/sense.ts) | Runs the helper, merges its controls and text into the element list, places marks that name ids |
@@ -213,14 +222,12 @@ so keep it private.
 
 ## Next
 
-1. **Faster answers.** Stream the answer (`--include-partial-messages`) and draw each mark as soon as it
-   is complete, instead of waiting for the whole JSON.
-2. **Push-to-talk.** Hold the shortcut and ask out loud, instead of typing (macOS Dictation works in the bar
+1. **Push-to-talk.** Hold the shortcut and ask out loud, instead of typing (macOS Dictation works in the bar
    today).
-3. **Truer mechanisms.** Figures are only as right as the model's mechanics: it can still spin a gear the
+2. **Truer mechanisms.** Figures are only as right as the model's mechanics: it can still spin a gear the
    wrong way or misplace a part. Constraints (mesh these two gears, join this rod to that crank) would let
    screen-ink work out positions and speeds itself.
-4. **Web pages' controls.** Chromium browsers only open their page's Accessibility tree to assistive tech,
+3. **Web pages' controls.** Chromium browsers only open their page's Accessibility tree to assistive tech,
    so on web pages the list has the text but not the buttons and fields. Asking for it (`AXEnhancedUserInterface`)
    can slow the browser, so it's left off for now.
-5. **Native port.** The renderer is plain web code, so it can move into a WKWebView in a Swift app.
+4. **Native port.** The renderer is plain web code, so it can move into a WKWebView in a Swift app.
