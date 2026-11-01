@@ -1,5 +1,7 @@
 // The overlay: one transparent, click-through window that sits over a whole display, above everything.
-import { BrowserWindow, ipcMain, type Display } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, type Display } from 'electron'
+import { existsSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { speaksCaption, words } from '../shared/caption'
 import type { DrawPayload } from '../shared/marks'
@@ -63,6 +65,18 @@ ipcMain.handle('ink:speak', (e, text: unknown) => {
   if (!win || win.isDestroyed() || e.sender !== win.webContents || typeof text !== 'string') return
   const page = win.webContents
   return voice.speak(text, seconds => captions && !page.isDestroyed() && page.send('ink:saying', { text, seconds }))
+})
+
+// A figure saved as a 3D model goes in Downloads, shown in Finder.
+ipcMain.handle('ink:save', async (e, name: unknown, usdz: unknown) => {
+  if (e.sender !== page() || typeof name !== 'string' || !(usdz instanceof Uint8Array) || usdz.length > 64e6) return null
+  const base = name.replace(/[^\p{L}\p{N} ._-]+/gu, ' ').trim().slice(0, 60) || 'figure'
+  const dir = app.getPath('downloads')
+  let file = path.join(dir, `${base}.usdz`)
+  for (let i = 2; existsSync(file); i++) file = path.join(dir, `${base} ${i}.usdz`)
+  await writeFile(file, usdz)
+  shell.showItemInFolder(file)
+  return file
 })
 
 /** Moves the overlay over `display` and draws. */

@@ -195,12 +195,32 @@ A `figure` stands a card on the screen and builds a model in it from up to 40 pa
 bottle), `extrude` gives a flat outline depth (a cam, a bracket) and `pipe` runs a tube smoothly through a path
 (a hose, a wire). Each part has a `size`, `at` and `rot` in the figure's own units (y up), a `color`, an
 `opacity` below 1 to see inside a housing, a `material` (`steel`, `brass`, `copper`, `glass`, `rubber`,
-`plastic`, or the default flat `matte`), and an optional `motion`: `spin`, `slide` or `swing` about an axis,
-with a `speed` in cycles per second and a `phase` to keep linked parts in step (`pivot` moves the point it turns
-around). `copies` repeats a part round an axis (bolts on a flange, cylinders in a radial engine), in a row, or
+`plastic`, or the default flat `matte`), and an optional `motion` about an axis: `spin`, `slide` or `swing` at
+a `speed` in cycles per second (`pivot` moves the point it turns around), or one timed by physics, with figure
+units taken as metres: a `pendulum` swings at the pace gravity gives its length (a rod and its bob hung from one
+point swing as one), a `bounce` drops and bounces in parabolas, squashing a little as it lands, and an `orbit`
+circles. A pipe can `flow`: beads stream along it, for fuel, air or current. `copies` repeats a part round an axis (bolts on a flange, cylinders in a radial engine), in a row, or
 mirrored, with a phase step so copies can move in sequence. Up to 8 `labels` name parts or points; they sit
 beside the model with leader lines and follow their part as it moves. The camera frames the whole model from
 `view` (yaw and pitch), and `turntable` slowly turns it.
+
+`links` say how parts drive each other, and screen-ink works the mechanism out
+([src/shared/mechanism.ts](src/shared/mechanism.ts)), so only the driving part needs a motion:
+
+- `mesh`: two gears. The second is moved to touch the first, sized so their teeth are the same size, and turns
+  the other way at the ratio of their teeth, its teeth between the first's.
+- `belt`: two pulleys (or sprockets, on a chain) turn the same way at the ratio of their radii (or teeth); the
+  belt is drawn round both, with beads running along it at the belt's speed.
+- `shaft`: two parts on one axle turn together, and move together when one is placed by a mesh.
+- `crank`: a crank turns, its pin drives a rod, and the rod pushes a slider (a piston) along the line to it.
+  The rod is placed and stretched to fit and runs in front of the crank's face, and a pin is added if the figure
+  has none.
+- `stretch`: a spring keeps its foot where it stands and its top on a moving part.
+
+Speeds pass along chains of links, a set is slowed together if a small gear would spin fast enough to flicker,
+and what can't work (a ring of three gears that would jam, a piston too close for a rod, a name that isn't a
+part's) is reported: the MCP `draw` tool tells the agent, and in deep mode the shortcut holds the figure back
+and asks Claude to fix it first.
 
 After the build, up to 8 `steps` walk through how it works, each with its own `say`: it can move the camera
 (`view`, with `zoom`, and `look` to centre on a part), cut the model open (`cut` along an axis, through chosen
@@ -211,6 +231,9 @@ them.
 
 The card can be handled: drag it to turn the model, and click a part to ask about it. The question goes to the
 shortcut's conversation ("tell me about the crank…"), and the answer is drawn beside the figure, which stays.
+Once built, the card has **Replay**, which walks through the steps again with their words, and **Save 3D**,
+which saves the model as it stands to Downloads as USDZ: Quick Look opens it on the Mac, and an iPhone stands it
+on a table in AR.
 The overlay lets clicks through everywhere else; it takes the mouse only while it is over a card, and a drawing
 doesn't fade while you're handling it.
 
@@ -221,7 +244,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 
 - `npm run preview` opens the overlay page in your browser, where it draws the demo over a mock window
   (2 for the pen demo, 3 for the 3D one, R to replay; `#3d` in the URL starts with 3D). The quickest way to
-  work on the look.
+  work on the look; `drawPreview(marks, caption)` in its console draws any marks.
 - `npm run typecheck`, `npm run build`.
 - Settings ([src/main/config.ts](src/main/config.ts)): `SCREEN_INK_PORT` (default 7377), `SCREEN_INK_COLOR`
   (ink hex, default `#FF5A36`), `SCREEN_INK_HOTKEY` (default `Alt+Shift+Space`, an
@@ -231,7 +254,8 @@ glass are lit by a soft studio room so they shine, and keep the ink.
   Finder), `SCREEN_INK_TOOLS` (Claude Code tools the shortcut may use, default `WebSearch`), `SCREEN_INK_VOICE`
   (a Kokoro voice, default `af_heart`; `say` or `say:<macOS voice>`; or `off` to start with voice off),
   `SCREEN_INK_CAPTIONS=off` (start without captions), `SCREEN_INK_LISTEN=off` (the bar only takes typing),
-  `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
+  `SCREEN_INK_CHECK` (`on` or `off`: deep mode, which checks figures and has Claude fix them before they are
+  drawn; on by default at `high` effort and above), `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
 
 | File | Role |
 | --- | --- |
@@ -249,7 +273,9 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/main/listen.ts](src/main/listen.ts) | Turns the bar's recording into text with Moonshine |
 | [src/renderer/renderer.ts](src/renderer/renderer.ts) | Marks → animated beats |
 | [src/renderer/shapes.ts](src/renderer/shapes.ts) | Hand-drawn geometry |
-| [src/renderer/figure.ts](src/renderer/figure.ts) | 3D figures: parts, motion, framing, labels |
+| [src/renderer/figure.ts](src/renderer/figure.ts) | 3D figures: parts, motion, framing, labels, steps, replay and saving |
+| [src/shared/mechanism.ts](src/shared/mechanism.ts) | Works out linked parts: gear spacing and phase, speeds, cranks, belts, gravity's timing |
+| [src/shared/check.ts](src/shared/check.ts) | What's wrong with a figure, for the agent or for deep mode |
 | [src/renderer/common.ts](src/renderer/common.ts) | Timing, easing and DOM helpers both renderers share |
 | [src/shared/demo.ts](src/shared/demo.ts) | The pen and 3D demos |
 | [src/renderer/ask.ts](src/renderer/ask.ts) | The prompt bar: typing, or listening with the words live |
@@ -265,9 +291,8 @@ so keep it private.
 
 1. **Hold to talk.** The bar listens as it opens; holding the shortcut while speaking needs key-up events,
    which Electron's global shortcuts don't give.
-2. **Truer mechanisms.** Figures are only as right as the model's mechanics: it can still spin a gear the
-   wrong way or misplace a part. Constraints (mesh these two gears, join this rod to that crank) would let
-   screen-ink work out positions and speeds itself.
+2. **More mechanisms.** Links cover gears, belts, shafts, cranks and springs; racks, cams, bevel gears,
+   escapements and linkages (four-bar, Watt's) would follow the same pattern.
 3. **Web pages' controls.** Chromium browsers only open their page's Accessibility tree to assistive tech,
    so on web pages the list has the text but not the buttons and fields. Asking for it (`AXEnhancedUserInterface`)
    can slow the browser, so it's left off for now.

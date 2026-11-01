@@ -54,6 +54,36 @@
       .card.dragging .card-hint {
         opacity: 1;
       }
+      .card-tools {
+        position: absolute;
+        right: 10px;
+        top: 9px;
+        display: flex;
+        gap: 6px;
+        opacity: 0;
+        transition: opacity 0.2s;
+        pointer-events: none;
+      }
+      .card.ready:hover .card-tools {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .card-tools button {
+        border: 0;
+        border-radius: 11px;
+        padding: 4px 10px;
+        background: rgba(48, 51, 58, 0.08);
+        color: #30333a;
+        font: 600 11px -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        cursor: pointer;
+      }
+      .card-tools button:hover {
+        background: rgba(48, 51, 58, 0.16);
+      }
+      .card-tools button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
       .card-title {
         pointer-events: none;
         position: absolute;

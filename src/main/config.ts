@@ -12,6 +12,8 @@ export const MODEL = env.SCREEN_INK_MODEL || 'sonnet'
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
 export const EFFORT = EFFORTS.includes(env.SCREEN_INK_EFFORT ?? '') ? env.SCREEN_INK_EFFORT! : ''
 if (env.SCREEN_INK_EFFORT && !EFFORT) console.error(`screen-ink: SCREEN_INK_EFFORT must be one of ${EFFORTS.join(', ')}; using the CLI's default.`)
+/** Deep mode, on at high effort and above unless SCREEN_INK_CHECK says: figures are checked, and fixed before they're drawn. */
+export const CHECK = env.SCREEN_INK_CHECK ? env.SCREEN_INK_CHECK !== 'off' : ['high', 'xhigh', 'max'].includes(EFFORT)
 /** Seconds a shortcut answer stays on screen after it finishes drawing. */
 export const ANSWER_SECONDS = 45
 // Claude Code's built-in tools the shortcut may use, all without asking. WebFetch is left out by default because
@@ -30,7 +32,7 @@ export const INSTRUCTIONS = [
   "Where the screenshot lists the thing you mean, name it by its id (a ring's box: \"e12\", an arrow's to: \"e12\"): an id lands exactly on it, coordinates are only your estimate. Use coordinates for what the list doesn't have.",
   'Point at things instead of covering them: ring or frame the target, put a short label pill beside it, number steps with badges, and arrow from your words to the target.',
   'Use the fewest marks that answer, say the rest in the caption, and clear when the user is done.',
-  'To explain how something works or is built, stand a figure (a small 3D model with labels and motion) on calm space beside what it explains, and walk through it with steps (cut it open, pull it apart, focus a part).',
+  'To explain how something works or is built, stand a figure (a small 3D model with labels and motion) on calm space beside what it explains, and walk through it with steps (cut it open, pull it apart, focus a part). Link the parts that drive each other and spin only the driver: screen-ink works out the rest.',
 ].join(' ')
 
 export const NARRATE =

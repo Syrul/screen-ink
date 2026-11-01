@@ -11,9 +11,10 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import os from 'node:os'
 import { z } from 'zod'
+import { checkFigure, checkMarks } from '../shared/check'
 import { markSchema, type MarkInput } from '../shared/marks'
 import type { Capture } from './capture'
-import { CLAUDE, EFFORT, INSTRUCTIONS, MODEL, NARRATE, TOOLS } from './config'
+import { CHECK, CLAUDE, EFFORT, INSTRUCTIONS, MODEL, NARRATE, TOOLS } from './config'
 import { describe } from './sense'
 import { AnswerStream } from './stream'
 import * as voice from './voice'
@@ -44,7 +45,10 @@ mark the nearest step that is visible (the menu that holds it, say).
 When the question is how something works or how it is put together (an engine, a joint, a gearbox, a lock), answer
 with one figure: build it from simple parts that sit where they really would, the moving ones with motion that shows
 the mechanism, see-through housings over what's inside, and labels on the three or four parts that matter. Keep it to
-what explains the idea, not every bolt. Turned parts (a valve, a bottle) are lathes, flat cut parts (a cam, a bracket)
+what explains the idea, not every bolt. Join parts that drive each other with links (meshing gears, a belt, a shared
+shaft, a crank driving a rod and piston, a spring held by a moving part) and give only the driving part a spin:
+screen-ink works out the speeds, spacing and timing, so it moves as the real one does. A pipe can flow to show what
+runs through it, and pendulums and bounces keep gravity's time. Turned parts (a valve, a bottle) are lathes, flat cut parts (a cam, a bracket)
 are extrudes, bent ones (a hose) are pipes, and a set of like parts is one part with copies; give parts real materials
 where it helps them read (steel, brass, glass). Then walk through it in two to four steps, each saying one thing while
 the figure shows it: cut the housing open, pull the parts apart, focus on the part being talked about, slow the motion
@@ -126,21 +130,27 @@ class Conversation {
   }
 
   ask(question: string, shot: Capture, list: string, listener: Listener): Promise<Answer> {
+    this.asked++
+    return this.send(
+      [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: shot.jpeg.toString('base64') } },
+        { type: 'text', text: `Screenshot: ${shot.width}×${shot.height} units, x right, y down, origin top-left.${list ? `\n${list}` : ''}\nQuestion: ${question}` },
+      ],
+      listener,
+    )
+  }
+
+  /** Sends words alone, about the last answer. */
+  tell(words: string, listener: Listener): Promise<Answer> {
+    return this.send([{ type: 'text', text: words }], listener)
+  }
+
+  private send(content: unknown[], listener: Listener): Promise<Answer> {
     if (this.ended) return Promise.reject(new Error('The conversation has ended.'))
     if (this.turn) return Promise.reject(new Error('Still answering the last question.'))
     this.hold()
     this.waiting = false
-    this.asked++
-    const message = {
-      type: 'user',
-      message: {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: shot.jpeg.toString('base64') } },
-          { type: 'text', text: `Screenshot: ${shot.width}×${shot.height} units, x right, y down, origin top-left.${list ? `\n${list}` : ''}\nQuestion: ${question}` },
-        ],
-      },
-    }
+    const message = { type: 'user', message: { role: 'user', content } }
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => this.close(), TIMEOUT_MS)
       this.turn = { listener, resolve, reject, stream: null, block: null, timer }
@@ -258,7 +268,30 @@ export async function askClaude(question: string, shot: Capture, signal: AbortSi
   const stop = () => convo.interrupt()
   signal.addEventListener('abort', stop, { once: true })
   try {
-    return await convo.ask(question, shot, list, listener)
+    if (!CHECK) return await convo.ask(question, shot, list, listener)
+    // A figure whose mechanism can't work is held back, with whatever follows it, and Claude is asked once to fix it.
+    let held = false
+    let passed = 0
+    const first = await convo.ask(question, shot, list, {
+      ...listener,
+      onMark: mark => {
+        if (!held && mark.kind === 'figure' && checkFigure(mark).length) held = true
+        if (held) return listener.onStep?.('Checking the figure')
+        passed++
+        listener.onMark?.(mark)
+      },
+    })
+    const problems = checkMarks(first.marks)
+    if (!problems.length || signal.aborted) return first
+    const bad = first.marks.findIndex(m => m.kind === 'figure' && checkFigure(m).length)
+    const kept = first.marks.slice(0, bad)
+    for (const mark of kept.slice(passed)) listener.onMark?.(mark)
+    listener.onStep?.('Fixing the figure')
+    const fixed = await convo.tell(
+      `Checking your figure found: ${problems.join(' ')} Answer again with the caption and the marks from that figure on, fixed.`,
+      listener,
+    )
+    return { caption: fixed.caption || first.caption, marks: [...kept, ...fixed.marks] }
   } finally {
     signal.removeEventListener('abort', stop)
   }

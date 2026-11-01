@@ -26,17 +26,28 @@ const vec3 = z.array(z.number()).length(3).describe('[x, y, z]')
 
 const motionSchema = z
   .object({
-    kind: z.enum(['spin', 'slide', 'swing']).describe('spin: turns round; slide: moves back and forth; swing: rocks back and forth.'),
+    kind: z
+      .enum(['spin', 'slide', 'swing', 'pendulum', 'bounce', 'orbit', 'flow'])
+      .describe(
+        'spin: turns round; slide: moves back and forth; swing: rocks back and forth; pendulum: a hanging part swings about ' +
+          'its pivot at the pace gravity gives its length (figure units are metres; leave speed out), and parts hung from the same ' +
+          'point (a rod and its bob) swing as one; bounce: dropped from amount above where it ' +
+          'sits, bounces there along the axis, timed by gravity; orbit: circles round where it sits, in the plane across the axis; ' +
+          'flow (pipes only): beads stream along the pipe, for what flows through it (fuel, air, current, blood).',
+      ),
     axis: z.enum(['x', 'y', 'z']).describe("In the part's own frame, after rot. Round shapes stand along y, so a wheel spins about y."),
-    amount: z.number().optional().describe('slide: distance either way, in figure units; swing: degrees either way. Spin ignores it.'),
+    amount: z
+      .number()
+      .optional()
+      .describe('slide: distance either way, in figure units; swing and pendulum: degrees either way; bounce: drop height; orbit: radius. Spin and flow ignore it.'),
     speed: z
       .number()
       .min(-5)
       .max(5)
       .optional()
       .describe(
-        'Cycles (turns) per second, negative reverses. Default 0.5. Linked wheels turn at speeds in inverse ratio of teeth (or radius): ' +
-          'opposite signs when they mesh directly, the same sign when a chain or belt joins them.',
+        'Cycles (turns) per second, negative reverses; flow: figure units per second. Default 0.5. A part driven by links gets ' +
+          'its speed from them: give it no motion.',
       ),
     phase: z.number().min(0).max(1).optional().describe('Head start as a fraction of a cycle, to keep linked parts in step.'),
   })
@@ -90,6 +101,28 @@ const partSchema = z.object({
   motion: motionSchema.optional(),
   copies: copiesSchema.optional(),
 })
+
+const id = z.string().describe('A part id.')
+const linkSchema = z
+  .discriminatedUnion('kind', [
+    z.object({ kind: z.literal('mesh'), a: id, b: id }).describe('Gears a and b mesh: b is moved to touch a, turns the other way at the ratio of their teeth, with its teeth between a\'s.'),
+    z.object({ kind: z.literal('belt'), a: id, b: id }).describe('A belt or chain joins pulleys a and b: they turn the same way at the ratio of their radii, and the belt is drawn.'),
+    z.object({ kind: z.literal('shaft'), a: id, b: id }).describe('a and b sit on one shaft and turn together.'),
+    z
+      .object({
+        kind: z.literal('crank'),
+        crank: id,
+        rod: id,
+        slider: id,
+        throw: z.number().positive().optional().describe("How far the crank pin is from the crank's centre. Default: 0.6 of the crank's radius."),
+      })
+      .describe(
+        "The crank turns, its pin drives the rod, and the rod pushes the slider (a piston) back and forth on the line from the crank's " +
+          'centre to it. Place the slider where it is at the top of its stroke; the rod is placed and stretched to fit.',
+      ),
+    z.object({ kind: z.literal('stretch'), part: id, to: id }).describe('A spring (standing along y) keeps its bottom where it is and its top on the moving part `to`.'),
+  ])
+  .describe('How parts drive each other.')
 
 const stepSchema = z
   .object({
@@ -184,6 +217,14 @@ export const markSchema = z.discriminatedUnion('kind', [
         .optional()
         .describe('Camera angle in degrees around and above the figure. Default yaw 30, pitch 20.'),
       turntable: z.boolean().optional().describe('Slowly turn the whole figure so its depth reads.'),
+      links: z
+        .array(linkSchema)
+        .max(16)
+        .optional()
+        .describe(
+          'How the parts drive each other. screen-ink works out the speeds, directions, spacing and timing, so only the part that ' +
+            'drives the rest needs a motion (a spin), and the mechanism is right.',
+        ),
       steps: z
         .array(stepSchema)
         .max(8)

@@ -19,6 +19,7 @@ declare global {
       onSaying(cb: (s: { text: string; seconds: number }) => void): void
       pointer(over: boolean): void
       ask(question: string): void
+      save(name: string, usdz: Uint8Array): Promise<string | null>
     }
   }
 }
@@ -297,7 +298,7 @@ function beatsFor(m: Mark, g: SVGGElement, color: string, P: (p: Point) => Point
     case 'line':
       return [pen(g, (m.points as Point[]).map(P), color)]
     case 'figure':
-      return figureBeats(m, R(m.box as Box), color, cards, { ask })
+      return figureBeats(m, R(m.box as Box), color, cards, figureHooks)
     case 'spotlight': {
       const r = R(m.box as Box)
       const id = `spot${++maskId}`
@@ -355,6 +356,20 @@ function clearInk(instant: boolean): void {
 }
 
 /** A part of a figure was clicked. The browser preview shows the question instead of asking it. */
+const figureHooks = {
+  ask,
+  say: (text: string) => Promise.race([speak(text), new Promise(r => setTimeout(r, LONGEST_WORDS * 1000))]).finally(() => doneSaying(text)),
+  save: async (name: string, usdz: Uint8Array) => {
+    if (window.inkBridge) return window.inkBridge.save(name, usdz)
+    // The browser preview downloads it.
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([usdz as BlobPart], { type: 'model/vnd.usdz+zip' }))
+    a.download = `${name}.usdz`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+  },
+}
+
 function ask(question: string): void {
   if (window.inkBridge) return window.inkBridge.ask(question)
   caption.textContent = question
@@ -448,6 +463,8 @@ if (window.inkBridge) {
     figureDemo = figure
     run()
   }
+  // For trying a drawing out from the console: drawPreview(marks, caption).
+  Object.assign(window, { drawPreview: (marks: Mark[], text?: string) => draw({ marks, caption: text, ppu: innerWidth / DEMO_SIZE.width, ink: '#FF5A36' }) })
   addEventListener('resize', run)
   addEventListener('keydown', e => (e.key === 'r' ? run() : e.key === '3' ? pick(true)() : e.key === '2' ? pick(false)() : null))
   document.getElementById('replay')?.addEventListener('click', pick(false))

@@ -5,8 +5,10 @@
 // part to ask about it.
 import * as THREE from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { USDZExporter } from 'three/addons/exporters/USDZExporter.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import type { FigureMark } from '../shared/marks'
+import { crankAt, solve, type Mechanism, type Vec } from '../shared/mechanism'
 import { clamp, easeBack, easePen, el, now, textWidth, UI_FONT, type Beat } from './common'
 import type { Rect } from './shapes'
 
@@ -132,11 +134,17 @@ function geometry(p: Part): THREE.BufferGeometry {
       return new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 16 }).translate(0, 0, -depth / 2)
     }
     case 'pipe': {
-      const path = (p.path ?? [[0, -0.5, 0], [0, 0.5, 0]]).map(([x, y, z]) => new THREE.Vector3(x, y, z))
-      const curve = new THREE.CatmullRomCurve3(path, false, 'centripetal')
-      return new THREE.TubeGeometry(curve, Math.max(32, path.length * 18), p.size?.[0] ?? 0.06, 12, false)
+      const curve = pipeCurve(p)
+      return new THREE.TubeGeometry(curve, clamp(curve.points.length * 18, 32, 600), p.size?.[0] ?? 0.06, 12, curve.closed)
     }
   }
+}
+
+/** A pipe's centre line; a path that ends where it starts closes into a loop (a belt, a ring main). */
+function pipeCurve(p: Part): THREE.CatmullRomCurve3 {
+  const points = (p.path ?? [[0, -0.5, 0], [0, 0.5, 0]]).map(([x, y, z]) => new THREE.Vector3(x, y, z))
+  const closed = points.length > 3 && points[0].distanceTo(points[points.length - 1]) < 1e-6
+  return new THREE.CatmullRomCurve3(closed ? points.slice(0, -1) : points, closed, 'centripetal')
 }
 
 function material(p: Part, i: number): THREE.MeshToonMaterial | THREE.MeshPhysicalMaterial {
@@ -159,13 +167,152 @@ function material(p: Part, i: number): THREE.MeshToonMaterial | THREE.MeshPhysic
 
 const deg = (v: number) => (v * Math.PI) / 180
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
+const frac = (v: number) => v - Math.floor(v)
+const vec = (v: Vec) => new THREE.Vector3(v[0], v[1], v[2])
+const AXES: Axis[] = ['x', 'y', 'z']
+/** The two axes across each axis, in turning order. */
+const ACROSS: Record<Axis, [Axis, Axis]> = { x: ['y', 'z'], y: ['z', 'x'], z: ['x', 'y'] }
 
 function move(mover: THREE.Object3D, pivot: THREE.Vector3, m: Motion, seconds: number, phase: number): void {
   const cycle = seconds * (m.speed ?? 0.5) + (m.phase ?? 0) + phase
   const wave = Math.sin(cycle * Math.PI * 2)
-  if (m.kind === 'spin') mover.rotation[m.axis] = cycle * Math.PI * 2
-  else if (m.kind === 'swing') mover.rotation[m.axis] = deg(m.amount ?? 20) * wave
-  else mover.position[m.axis] = pivot[m.axis] + (m.amount ?? 0.2) * wave
+  switch (m.kind) {
+    case 'spin':
+      mover.rotation[m.axis] = cycle * Math.PI * 2
+      break
+    case 'swing':
+      mover.rotation[m.axis] = deg(m.amount ?? 20) * wave
+      break
+    case 'pendulum': // let go from one side
+      mover.rotation[m.axis] = deg(m.amount ?? 20) * Math.cos(cycle * Math.PI * 2)
+      break
+    case 'bounce': {
+      // Dropped from the top; each bounce a parabola, squashed a little as it lands.
+      const t = frac(cycle + 0.5) - 0.5
+      mover.position[m.axis] = pivot[m.axis] + (m.amount ?? 0.5) * (1 - 4 * t * t)
+      const squash = Math.max(0, Math.abs(t) - 0.45) / 0.05
+      mover.scale.setScalar(1 + 0.09 * squash)
+      mover.scale[m.axis] = 1 - 0.18 * squash
+      break
+    }
+    case 'orbit': {
+      const [a, b] = ACROSS[m.axis]
+      mover.position[a] = pivot[a] + (m.amount ?? 0.3) * Math.cos(cycle * Math.PI * 2)
+      mover.position[b] = pivot[b] + (m.amount ?? 0.3) * wave
+      break
+    }
+    case 'slide':
+      mover.position[m.axis] = pivot[m.axis] + (m.amount ?? 0.2) * wave
+      break
+    case 'flow': // beads, moved by the mechanism
+      break
+  }
+}
+
+/** Moves what the links drive, for the time: rods and sliders by their cranks, springs held to what they hold, beads
+ *  round belts and along flowing pipes. Runs after the parts' own motions. */
+function mechanism(mech: Mechanism, copiesOf: Piece[][]): (seconds: number) => void {
+  const jobs: ((seconds: number) => void)[] = []
+  const box = (p: Piece) => (p.mesh.geometry.computeBoundingBox(), p.mesh.geometry.boundingBox!)
+
+  for (const c of mech.cranks) {
+    const motion = mech.parts[c.crank].motion!
+    const rods = copiesOf[c.rod], sliders = copiesOf[c.slider]
+    const copies = mech.parts[c.slider].copies
+    // The rod's long side runs pin to slider, stretched to the rod's length; its thinnest side faces along the axle.
+    const b = box(rods[0])
+    const size = b.getSize(new THREE.Vector3()), middle = b.getCenter(new THREE.Vector3())
+    const long = AXES.reduce((a, x) => (size[x] > size[a] ? x : a))
+    const [o1, o2] = AXES.filter(x => x !== long)
+    const flat = size[o1] <= size[o2] ? o1 : o2
+    const third = flat === o1 ? o2 : o1
+    const stretch = c.length / Math.max(size[long], 1e-6)
+    for (const r of rods) r.mesh.scale[long] = stretch
+    middle[long] *= stretch
+    const axis = vec(c.axis)
+    // Copies round the axle sit a turn apart, so their cranks are too.
+    const around = copies?.around ? Math.round(axis[copies.around]) : 0
+    const cols = { x: new THREE.Vector3(), y: new THREE.Vector3(), z: new THREE.Vector3() }
+    const basis = new THREE.Matrix4()
+    jobs.push(seconds => {
+      const cycle = seconds * (motion.speed ?? 0.5) + (motion.phase ?? 0)
+      const n = Math.min(rods.length, sliders.length)
+      for (let i = 0; i < n; i++) {
+        const turn = (cycle + (copies?.phase ?? 0) * i - (around * i) / sliders.length) * Math.PI * 2
+        const { pin, end, slider } = crankAt(c, turn)
+        sliders[i].place.position.set(...slider)
+        cols[long].copy(vec(end)).sub(vec(pin)).normalize()
+        cols[flat].copy(axis)
+        cols[third].crossVectors(cols[long], cols[flat])
+        basis.makeBasis(cols.x, cols.y, cols.z)
+        if (basis.determinant() < 0) {
+          cols[third].negate()
+          basis.makeBasis(cols.x, cols.y, cols.z)
+        }
+        rods[i].place.quaternion.setFromRotationMatrix(basis)
+        rods[i].place.position.copy(vec(pin)).add(vec(end)).multiplyScalar(0.5).sub(middle.clone().applyQuaternion(rods[i].place.quaternion))
+      }
+    })
+  }
+
+  // A spring keeps its bottom where it stands and its top where it meets the part it holds.
+  const frame = (p: Piece, out: THREE.Matrix4) => {
+    p.place.updateMatrix()
+    p.mover.updateMatrix()
+    return out.multiplyMatrices(p.place.matrix, p.mover.matrix)
+  }
+  for (const s of mech.stretches) {
+    const spring = copiesOf[s.part][0], held = copiesOf[s.to][0]
+    const { min, max } = box(spring)
+    spring.place.updateMatrix()
+    const rest = spring.place.quaternion.clone()
+    const bottom = new THREE.Vector3(0, min.y, 0).applyMatrix4(spring.place.matrix)
+    const top = new THREE.Vector3(0, max.y, 0).applyMatrix4(spring.place.matrix)
+    const along0 = top.clone().sub(bottom)
+    const m = new THREE.Matrix4()
+    const attach = top.clone().applyMatrix4(frame(held, m).invert())
+    const along = new THREE.Vector3(), bend = new THREE.Quaternion()
+    jobs.push(() => {
+      along.copy(attach).applyMatrix4(frame(held, m)).sub(bottom)
+      bend.setFromUnitVectors(along0.clone().normalize(), along.clone().normalize())
+      spring.place.quaternion.copy(rest).premultiply(bend)
+      const sy = along.length() / along0.length()
+      spring.mesh.scale.y = sy
+      spring.place.position.copy(bottom).sub(new THREE.Vector3(0, min.y * sy, 0).applyQuaternion(spring.place.quaternion))
+    })
+  }
+
+  // Beads running round a belt or along a pipe.
+  for (const r of mech.runners) {
+    const piece = copiesOf[r.part][0]
+    const p = piece.part
+    const curve = pipeCurve(p)
+    const length = curve.getLength()
+    const thick = p.size?.[0] ?? 0.06
+    const belt = p.material === 'rubber' && curve.closed
+    const count = clamp(Math.round(length / (thick * (belt ? 4 : 7))), 8, 90)
+    const color = belt ? '#8A929C' : p.material === 'glass' ? '#4F8EDB' : '#FFFFFF'
+    const beads = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(thick * (belt ? 1.18 : 0.7), 10, 8),
+      new THREE.MeshToonMaterial({ color, gradientMap: toonBands, transparent: true }),
+      count,
+    )
+    piece.mesh.add(beads)
+    const at = new THREE.Matrix4(), point = new THREE.Vector3()
+    jobs.push(seconds => {
+      const shift = (seconds * r.speed) / length
+      for (let i = 0; i < count; i++) beads.setMatrixAt(i, at.makeTranslation(curve.getPointAt(frac(i / count + shift), point)))
+      beads.instanceMatrix.needsUpdate = true
+      // Fade and cut with the pipe.
+      const mat = piece.mesh.material
+      beads.material.opacity = Math.min(1, mat.opacity * (belt ? 1 : 1.6))
+      if (beads.material.clippingPlanes !== mat.clippingPlanes) {
+        beads.material.clippingPlanes = mat.clippingPlanes
+        beads.material.needsUpdate = true
+      }
+    })
+  }
+  return seconds => jobs.forEach(j => j(seconds))
 }
 
 // ---- framing
@@ -215,6 +362,7 @@ function fit(camera: THREE.PerspectiveCamera, points: THREE.Vector3[], fillX: nu
 interface Piece {
   part: Part
   slot: THREE.Object3D
+  place: THREE.Object3D
   mover: THREE.Object3D
   pivot: THREE.Vector3
   mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshToonMaterial | THREE.MeshPhysicalMaterial>
@@ -246,9 +394,27 @@ interface Pose {
 export interface FigureHooks {
   /** The user clicked a part: ask about it. */
   ask(question: string): void
+  /** Says a step's words, if the voice is on; resolves once they are said. */
+  say(text: string): Promise<unknown>
+  /** Saves the figure as a 3D model file. */
+  save(name: string, usdz: Uint8Array): Promise<unknown>
 }
 
-function build(m: FigureMark, r: Rect, ink: string, host: HTMLElement, hooks: FigureHooks) {
+const SHELF = 0.3 // metres: how big a saved model stands, to sit on a table in AR
+
+/** A geometry with `m` built in, its triangles turned back the right way round if `m` mirrors. */
+function baked(geo: THREE.BufferGeometry, m: THREE.Matrix4): THREE.BufferGeometry {
+  const g = (geo.index ? geo.toNonIndexed() : geo.clone()).applyMatrix4(m)
+  if (m.determinant() < 0)
+    for (const a of Object.values(g.attributes)) {
+      const v = a.array, n = a.itemSize
+      for (let t = 0; t + 2 < a.count; t += 3)
+        for (let k = 0; k < n; k++) [v[(t + 1) * n + k], v[(t + 2) * n + k]] = [v[(t + 2) * n + k], v[(t + 1) * n + k]]
+    }
+  return g
+}
+
+function build(m: FigureMark, mech: Mechanism, r: Rect, ink: string, host: HTMLElement, hooks: FigureHooks) {
   const card = document.createElement('div')
   card.className = 'card'
   Object.assign(card.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, opacity: '0' })
@@ -269,6 +435,16 @@ function build(m: FigureMark, r: Rect, ink: string, host: HTMLElement, hooks: Fi
   hint.className = 'card-hint'
   hint.textContent = 'Drag to turn · click a part to ask'
   card.append(hint)
+  const tools = document.createElement('div')
+  tools.className = 'card-tools'
+  const tool = (text: string, title: string, run: (b: HTMLButtonElement) => void) => {
+    const b = document.createElement('button')
+    b.textContent = text
+    b.title = title
+    b.addEventListener('click', () => run(b))
+    tools.append(b)
+  }
+  card.append(tools)
   host.append(card)
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
@@ -335,11 +511,15 @@ function build(m: FigureMark, r: Rect, ink: string, host: HTMLElement, hooks: Fi
       const slot = new THREE.Object3D()
       slot.add(copy)
       root.add(slot)
-      pieces.push({ part: p, slot, mover, pivot, mesh, edges, hull: shell, inside, opacity, phase: (copies?.phase ?? 0) * k, away: new THREE.Vector3(), fade: 0 })
+      pieces.push({ part: p, slot, place, mover, pivot, mesh, edges, hull: shell, inside, opacity, phase: (copies?.phase ?? 0) * k, away: new THREE.Vector3(), fade: 0 })
     }
   })
   const byId = new Map<string, Piece>()
   for (const piece of pieces) if (piece.part.id && !byId.has(piece.part.id)) byId.set(piece.part.id, piece)
+  // At rest the figure stands as it will when the motion starts.
+  const drive = mechanism(mech, m.parts.map(p => pieces.filter(q => q.part === p)))
+  for (const p of pieces) p.part.motion && move(p.mover, p.pivot, p.part.motion, 0, p.phase)
+  drive(0)
 
   // Frame the whole figure at rest, then shrink every part to nothing for the build.
   const bounds = new THREE.Box3().setFromObject(root)
@@ -460,8 +640,12 @@ function build(m: FigureMark, r: Rect, ink: string, host: HTMLElement, hooks: Fi
       const cut = !!pose.cut?.pieces.has(piece) && pose.cutIn > 0
       const mat = piece.mesh.material
       mat.opacity = piece.opacity * lerp(1, FADED, fade)
-      mat.transparent = mat.opacity < 1
-      mat.depthWrite = mat.opacity >= 1
+      if (mat.transparent !== mat.opacity < 1) {
+        // Whether it's see-through is built into its shader, so a change rebuilds that.
+        mat.transparent = mat.opacity < 1
+        mat.depthWrite = !mat.transparent
+        mat.needsUpdate = true
+      }
       piece.edges.material.opacity = (piece.opacity < 1 ? 0.45 : 1) * lerp(1, FADED, fade)
       if (piece.hull) piece.hull.visible = fade < 0.5 && !cut
       piece.inside.material.visible = cut && piece.opacity >= 1 && fade < 0.5
@@ -521,6 +705,75 @@ function build(m: FigureMark, r: Rect, ink: string, host: HTMLElement, hooks: Fi
       if (t >= 1 && cutTo === 0) pose.cut = null
     }
   }
+
+  // ---- replaying the steps, saving the model
+
+  const wait = (ms: number) => new Promise(r => setTimeout(r, ms))
+  /** Plays a step's change over its time, frame by frame. */
+  const animate = (play: (t: number) => void) =>
+    new Promise<void>(done => {
+      const from = now()
+      const frame = () => {
+        const t = clamp((now() - from) / STEP_SECONDS, 0, 1)
+        play(t)
+        if (t < 1) requestAnimationFrame(frame)
+        else done()
+      }
+      requestAnimationFrame(frame)
+    })
+  let tour = 0
+  async function replay(): Promise<void> {
+    const run = ++tour
+    const home = m.view ?? {}
+    await animate(stepTo({ view: { yaw: home.yaw ?? 30, pitch: home.pitch ?? 20, zoom: 1 }, look: 'all', explode: 0, focus: [], cut: { axis: 'off' }, motion: 'play' }))
+    for (const s of m.steps ?? []) {
+      if (run !== tour) return
+      await Promise.all([animate(stepTo(s)), s.say ? hooks.say(s.say) : null])
+      await wait((s.hold ?? 0) * 1000)
+    }
+  }
+
+  /** The model as it stands, put together, as USDZ: Quick Look opens it, and an iPhone stands it on a table. */
+  async function exportModel(): Promise<Uint8Array> {
+    const out = new THREE.Group()
+    const apart = pieces.map(p => p.slot.position.clone())
+    for (const p of pieces) p.slot.position.set(0, 0, 0)
+    root.updateMatrixWorld(true)
+    const toRoot = root.matrixWorld.clone().invert()
+    const m4 = new THREE.Matrix4()
+    for (const p of pieces) {
+      const mat = p.mesh.material
+      const look = new THREE.MeshStandardMaterial({
+        color: mat.color,
+        metalness: 'metalness' in mat ? mat.metalness : 0,
+        roughness: 'roughness' in mat ? mat.roughness : 0.75,
+        transparent: p.opacity < 1,
+        opacity: p.opacity,
+      })
+      out.add(new THREE.Mesh(baked(p.mesh.geometry, m4.multiplyMatrices(toRoot, p.mesh.matrixWorld)), look))
+    }
+    pieces.forEach((p, i) => p.slot.position.copy(apart[i]))
+    // Standing on the floor, centred, at tabletop size.
+    const b = new THREE.Box3().setFromObject(out)
+    const size = b.getSize(new THREE.Vector3())
+    const fit = SHELF / Math.max(size.x, size.y, size.z, 1e-6)
+    out.scale.setScalar(fit)
+    out.position.set(-(b.min.x + size.x / 2) * fit, -b.min.y * fit, -(b.min.z + size.z / 2) * fit)
+    const scene = new THREE.Scene().add(out)
+    scene.updateMatrixWorld(true)
+    const bytes = await new USDZExporter().parseAsync(scene)
+    out.traverse(o => o instanceof THREE.Mesh && (o.geometry.dispose(), o.material.dispose()))
+    return bytes
+  }
+
+  tool('Replay', 'Walk through the steps again', () => void replay())
+  tool('Save 3D', 'Save as a 3D model (USDZ) in Downloads', b => {
+    b.disabled = true
+    void exportModel()
+      .then(bytes => hooks.save(m.title ?? 'figure', bytes))
+      .catch(e => console.error('screen-ink: saving the figure failed', e))
+      .finally(() => (b.disabled = false))
+  })
 
   // ---- turning by drag, asking by click
 
@@ -602,6 +855,7 @@ function build(m: FigureMark, r: Rect, ink: string, host: HTMLElement, hooks: Fi
     if (movingSince) {
       motionTime += (t - last) * pose.rate
       for (const p of pieces) p.part.motion && move(p.mover, p.pivot, p.part.motion, motionTime, p.phase)
+      drive(motionTime)
     }
     last = t
     if (turning) turntable.rotation.y = (t - born) * TURNTABLE
@@ -626,6 +880,9 @@ function build(m: FigureMark, r: Rect, ink: string, host: HTMLElement, hooks: Fi
     },
     startMotion() {
       movingSince ||= now()
+    },
+    ready() {
+      card.classList.add('ready')
     },
     stepTo,
     dispose() {
@@ -652,12 +909,14 @@ function roomy(r: Rect): Rect {
   return { x: clamp(r.x + (r.w - w) / 2, 6, innerWidth - w - 6), y: clamp(r.y + (r.h - h) / 2, 6, innerHeight - h - 6), w, h }
 }
 
-export function figureBeats(m: FigureMark, box: Rect, ink: string, host: HTMLElement, hooks: FigureHooks): Beat[] {
+export function figureBeats(figure: FigureMark, box: Rect, ink: string, host: HTMLElement, hooks: FigureHooks): Beat[] {
+  const mech = solve(figure)
+  const m = { ...figure, parts: mech.parts }
   const r = roomy(box)
   let fig: ReturnType<typeof build> | undefined
   const partDur = clamp(2.4 / m.parts.length, 0.12, 0.35)
   return [
-    { dur: 0.35, start: () => (fig = build(m, r, ink, host, hooks)), frame: t => fig!.showCard(t) },
+    { dur: 0.35, start: () => (fig = build(m, mech, r, ink, host, hooks)), frame: t => fig!.showCard(t) },
     ...m.parts.map((_, i): Beat => ({ dur: partDur, frame: t => fig!.grow(i, t) })),
     ...(m.labels ?? []).map((_, i): Beat => ({ dur: 0.22, frame: t => fig!.showLabel(i, t) })),
     { dur: 0.01, frame: () => fig!.startMotion() },
@@ -666,5 +925,6 @@ export function figureBeats(m: FigureMark, box: Rect, ink: string, host: HTMLEle
       let play: (t: number) => void = () => {}
       return { dur, say: s.say, start: () => (play = fig!.stepTo(s)), frame: t => play(clamp((t * dur) / STEP_SECONDS, 0, 1)) }
     }),
+    { dur: 0.01, frame: () => fig!.ready() },
   ]
 }

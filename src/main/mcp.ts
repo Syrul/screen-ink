@@ -4,6 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { screen } from 'electron'
 import { z } from 'zod'
+import { checkMarks } from '../shared/check'
 import { drawShape } from '../shared/marks'
 import * as canvas from './canvas'
 import { capture, displayUnderCursor, screenAccess } from './capture'
@@ -78,7 +79,9 @@ function buildServer(): McpServer {
       const { display: d, drawn: n, missing } = drawn
       const fade = args.fadeAfter ? `, fading ${args.fadeAfter}s after it finishes` : ', staying until cleared'
       const skipped = missing.length ? ` Left out marks on ${missing.join(', ')}: the last screenshot has no such element.` : ''
-      return text(`Drew ${n} mark${n === 1 ? '' : 's'} on display ${d.id}${fade}.${skipped}`)
+      const problems = checkMarks(args.marks)
+      const check = problems.length ? `\nThe figure won't work as meant: ${problems.join(' ')} Fix it and draw it again.` : ''
+      return text(`Drew ${n} mark${n === 1 ? '' : 's'} on display ${d.id}${fade}.${skipped}${check}`)
     },
   )
 
