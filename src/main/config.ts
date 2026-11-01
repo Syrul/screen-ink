@@ -16,4 +16,5 @@ export const INSTRUCTIONS = [
   "Call screenshot, then draw in that screenshot's coordinates.",
   'Point at things instead of covering them: ring or frame the target, put a short label pill beside it, number steps with badges, and arrow from your words to the target.',
   'Use the fewest marks that answer, say the rest in the caption, and clear when the user is done.',
+  'To explain how something works or is built, stand a figure (a small 3D model with labels and motion) on calm space beside what it explains.',
 ].join(' ')

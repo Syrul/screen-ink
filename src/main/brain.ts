@@ -21,7 +21,11 @@ const SYSTEM = `${INSTRUCTIONS}
 You get one screenshot of the user's screen and one question. Answer by drawing on their screen: marks in the
 screenshot's coordinates, and a caption with the answer itself. Put marks on the exact thing the user needs (the
 menu, button, field or line), never on a guess: if the thing isn't visible, say in the caption where to find it and
-mark the nearest step that is visible (the menu that holds it, say).`
+mark the nearest step that is visible (the menu that holds it, say).
+When the question is how something works or how it is put together (an engine, a joint, a gearbox, a lock), answer
+with one figure: build it from simple parts that sit where they really would, the moving ones with motion that shows
+the mechanism, see-through housings over what's inside, and labels on the three or four parts that matter. Keep it to
+what explains the idea, not every bolt.`
 
 const TIMEOUT_MS = 90_000
 

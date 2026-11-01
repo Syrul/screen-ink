@@ -2,8 +2,10 @@
 // popping in, a fade) and beats play one after another, so a drawing appears in the order the agent wrote it.
 // Opened in a plain browser (no `window.inkBridge`) it draws the demo over a mock window instead.
 import { getStroke } from 'perfect-freehand'
-import { DEMO_CAPTION, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
+import { DEMO_CAPTION, DEMO_FIGURE_CAPTION, DEMO_FIGURE_MARKS, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
 import type { Box, DrawPayload, Mark, Point } from '../shared/marks'
+import { clamp, easeBack, easePen, el, now, textWidth, UI_FONT, type Beat } from './common'
+import { disposeFigures, figureBeats } from './figure'
 import { arrow, dashes, lengthOf, marker, outlinePath, ring, slice, underline, type Rect } from './shapes'
 
 declare global {
@@ -12,25 +14,17 @@ declare global {
   }
 }
 
-const NS = 'http://www.w3.org/2000/svg'
 const svg = document.getElementById('ink') as unknown as SVGSVGElement
 const under = document.getElementById('under') as unknown as SVGGElement
 const over = document.getElementById('over') as unknown as SVGGElement
+const cards = document.getElementById('cards') as HTMLDivElement
 const caption = document.getElementById('caption') as HTMLDivElement
 
 const PEN = 4 // the pen's width in points
 const GAP = 0.12 // seconds between marks
-const UI_FONT = '-apple-system, "SF Pro Text", system-ui, sans-serif'
 const HAND_FONT = '"Chalkboard SE", "Marker Felt", "Comic Sans MS", cursive'
 const MARKER = '#FFE14D'
 
-interface Beat {
-  dur: number
-  /** Start together with the beat before instead of after it. */
-  together?: boolean
-  start?: () => void
-  frame: (t: number) => void
-}
 interface Scheduled extends Beat {
   at: number
   started?: boolean
@@ -41,24 +35,6 @@ let endsAt = 0
 let raf = 0
 let fadeTimer = 0
 let generation = 0
-
-const now = () => performance.now() / 1000
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
-const easePen = (t: number) => 0.5 - Math.cos(Math.PI * t) / 2
-const easeBack = (t: number) => 1 + 2.7 * (t - 1) ** 3 + 1.7 * (t - 1) ** 2
-
-function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>, parent?: Element): SVGElementTagNameMap[K] {
-  const e = document.createElementNS(NS, tag)
-  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v))
-  parent?.append(e)
-  return e
-}
-
-const measure = document.createElement('canvas').getContext('2d')!
-function textWidth(text: string, font: string): number {
-  measure.font = font
-  return measure.measureText(text).width
-}
 
 function tick(): void {
   const t = now()
@@ -212,6 +188,8 @@ function beatsFor(m: Mark, g: SVGGElement, color: string, P: (p: Point) => Point
     }
     case 'line':
       return [pen(g, (m.points as Point[]).map(P), color)]
+    case 'figure':
+      return figureBeats(m, R(m.box as Box), color, cards)
     case 'spotlight': {
       const r = R(m.box as Box)
       const id = `spot${++maskId}`
@@ -233,22 +211,29 @@ const toRect = ([x, y]: Point): Rect => ({ x, y, w: 0, h: 0 })
 
 // ---- drawing and clearing
 
+function fade(out: boolean): void {
+  for (const layer of [svg, cards]) {
+    layer.style.transition = out ? 'opacity .3s' : ''
+    layer.style.opacity = out ? '0' : '1'
+  }
+}
+
 function wipe(): void {
   playing = []
   endsAt = 0
   clearTimeout(fadeTimer)
+  disposeFigures()
   under.replaceChildren()
   over.replaceChildren()
+  cards.replaceChildren()
   caption.classList.remove('show')
-  svg.style.transition = ''
-  svg.style.opacity = '1'
+  fade(false)
 }
 
 function clearInk(instant: boolean): void {
   const gen = ++generation
   if (instant) return wipe()
-  svg.style.transition = 'opacity .3s'
-  svg.style.opacity = '0'
+  fade(true)
   caption.classList.remove('show')
   setTimeout(() => gen === generation && wipe(), 320)
 }
@@ -257,8 +242,7 @@ function draw(p: DrawPayload): void {
   generation++
   if (!p.append) wipe()
   clearTimeout(fadeTimer)
-  svg.style.transition = ''
-  svg.style.opacity = '1'
+  fade(false)
 
   const P = (q: Point): Point => [q[0] * p.ppu, q[1] * p.ppu]
   const R = (b: Box): Rect => ({ x: b[0] * p.ppu, y: b[1] * p.ppu, w: b[2] * p.ppu, h: b[3] * p.ppu })
@@ -293,13 +277,20 @@ if (window.inkBridge) {
 } else {
   document.body.classList.add('preview')
   const mock = document.getElementById('mock') as HTMLDivElement
+  let figureDemo = location.hash === '#3d'
   const run = () => {
     const ppu = innerWidth / DEMO_SIZE.width
     mock.style.transform = `scale(${ppu})`
-    draw({ marks: DEMO_MARKS, caption: DEMO_CAPTION, ppu, ink: '#FF5A36' })
+    if (figureDemo) draw({ marks: DEMO_FIGURE_MARKS, caption: DEMO_FIGURE_CAPTION, ppu, ink: '#FF5A36' })
+    else draw({ marks: DEMO_MARKS, caption: DEMO_CAPTION, ppu, ink: '#FF5A36' })
+  }
+  const pick = (figure: boolean) => () => {
+    figureDemo = figure
+    run()
   }
   addEventListener('resize', run)
-  addEventListener('keydown', e => e.key === 'r' && run())
-  document.getElementById('replay')?.addEventListener('click', run)
+  addEventListener('keydown', e => (e.key === 'r' ? run() : e.key === '3' ? pick(true)() : e.key === '2' ? pick(false)() : null))
+  document.getElementById('replay')?.addEventListener('click', pick(false))
+  document.getElementById('replay3d')?.addEventListener('click', pick(true))
   run()
 }

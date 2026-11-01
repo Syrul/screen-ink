@@ -20,6 +20,37 @@
         width: 100%;
         height: 100%;
       }
+      #cards {
+        position: fixed;
+        inset: 0;
+      }
+      .card {
+        position: absolute;
+        border-radius: 16px;
+        background: #fbf8f2;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(0, 0, 0, 0.06);
+        overflow: hidden;
+      }
+      .card canvas {
+        position: absolute;
+        left: 0;
+      }
+      .card-title {
+        position: absolute;
+        left: 12px;
+        top: 10px;
+        padding: 4px 12px;
+        border-radius: 12px;
+        color: #fff;
+        font: 600 13px -apple-system, 'SF Pro Text', system-ui, sans-serif;
+      }
+      .card-labels {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+      }
       #caption {
         position: fixed;
         left: 50%;
@@ -43,7 +74,7 @@
 
       /* ---- browser preview only: a mock window laid out in the demo's 1280×800 units */
       #mock,
-      #replay {
+      .replay {
         display: none;
       }
       .preview {
@@ -60,7 +91,7 @@
         font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif;
         color: #1d2129;
       }
-      .preview #replay {
+      .preview .replay {
         display: block;
         position: fixed;
         top: 12px;
@@ -157,12 +188,14 @@
       <div class="ph" style="left: 420px; top: 452px; width: 380px"></div>
       <div class="ph" style="left: 420px; top: 480px; width: 300px"></div>
     </div>
+    <div id="cards"></div>
     <svg id="ink" xmlns="http://www.w3.org/2000/svg">
       <g id="under"></g>
       <g id="over"></g>
     </svg>
     <div id="caption"></div>
-    <button id="replay">Replay (R)</button>
+    <button class="replay" id="replay">Pen demo (2)</button>
+    <button class="replay" id="replay3d" style="left: 130px">3D demo (3)</button>
     <script src="renderer.js"></script>
   </body>
 </html>

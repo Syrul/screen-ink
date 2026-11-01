@@ -3,7 +3,7 @@ import { app, clipboard, globalShortcut, Menu, nativeImage, Tray } from 'electro
 import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { DEMO_CAPTION, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
+import { DEMO_CAPTION, DEMO_FIGURE_CAPTION, DEMO_FIGURE_MARKS, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
 import * as ask from './ask'
 import { displayUnderCursor } from './capture'
 import { ASK_SHORTCUT, CLEAR_SHORTCUT, INK, PORT } from './config'
@@ -24,9 +24,10 @@ function loadToken(): { token: string; file: string } {
   return { token, file }
 }
 
-function drawDemo(): void {
+function drawDemo(figure = false): void {
   const d = displayUnderCursor()
-  void overlay.draw(d, { marks: DEMO_MARKS, caption: DEMO_CAPTION, fadeAfter: 8, ppu: d.size.width / DEMO_SIZE.width, ink: INK })
+  const demo = figure ? { marks: DEMO_FIGURE_MARKS, caption: DEMO_FIGURE_CAPTION, fadeAfter: 15 } : { marks: DEMO_MARKS, caption: DEMO_CAPTION, fadeAfter: 8 }
+  void overlay.draw(d, { ...demo, ppu: d.size.width / DEMO_SIZE.width, ink: INK })
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()
@@ -57,7 +58,8 @@ app.whenReady().then(() => {
     Menu.buildFromTemplate([
       { label: 'Ask about the screen…', accelerator: ASK_SHORTCUT, click: toggleAsk },
       { label: 'Clear', accelerator: CLEAR_SHORTCUT, click: clearInk },
-      { label: 'Draw demo', click: drawDemo },
+      { label: 'Draw demo', click: () => drawDemo() },
+      { label: 'Draw 3D demo', click: () => drawDemo(true) },
       { type: 'separator' },
       { label: `MCP on ${url}`, enabled: false },
       { label: 'Copy "claude mcp add" command', click: () => clipboard.writeText(addCommand) },
@@ -67,7 +69,7 @@ app.whenReady().then(() => {
   )
 
   console.log(`screen-ink: MCP on ${url}, ask with ${ASK_SHORTCUT}\nAdd it to Claude Code with:\n  ${addCommand}`)
-  if (process.env.SCREEN_INK_DEMO) drawDemo()
+  if (process.env.SCREEN_INK_DEMO) drawDemo(process.env.SCREEN_INK_DEMO === '3d')
 })
 
 app.on('will-quit', () => globalShortcut.unregisterAll())
