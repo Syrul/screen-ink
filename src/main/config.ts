@@ -21,6 +21,8 @@ export const TOOLS = env.SCREEN_INK_TOOLS ?? 'WebSearch'
 export const VOICE = env.SCREEN_INK_VOICE || 'af_heart'
 /** Whether to caption the narration on screen as it is spoken: `off` starts with captions off. */
 export const CAPTIONS = env.SCREEN_INK_CAPTIONS !== 'off'
+/** Whether the bar listens for a spoken question as it opens: `off` starts with it typing only. */
+export const LISTEN = env.SCREEN_INK_LISTEN !== 'off'
 
 export const INSTRUCTIONS = [
   "screen-ink lets you look at the user's screen and draw on it, like a friend pointing with a pen.",

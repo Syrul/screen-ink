@@ -1,7 +1,7 @@
 // The shortcut: screenshot the display under the mouse, open a prompt bar on it, ask Claude, draw the answer.
 // The screenshot is taken before the bar opens, so neither the bar nor an old drawing is in it. The bar goes as
 // soon as the first mark is written and the rest are drawn as they come. Opening the bar again soon after continues
-// the conversation; ⌘N in the bar starts a new one.
+// the conversation; ⌘N in the bar starts a new one. The bar listens as it opens, so the question can be spoken.
 import { BrowserWindow, ipcMain } from 'electron'
 import path from 'node:path'
 import type { MarkInput } from '../shared/marks'
@@ -9,9 +9,14 @@ import * as brain from './brain'
 import * as canvas from './canvas'
 import { capture, displayUnderCursor, type Capture } from './capture'
 import { ANSWER_SECONDS } from './config'
+import * as listen from './listen'
 import * as overlay from './overlay'
 
-export type AskState = { state: 'idle'; followUp?: boolean } | { state: 'thinking'; note?: string } | { state: 'error'; message: string }
+export type AskState =
+  | { state: 'idle'; followUp?: boolean; listen?: boolean; note?: string }
+  | { state: 'thinking'; note?: string }
+  | { state: 'error'; message: string }
+  | { state: 'closed' }
 
 const SIZE = { width: 640, height: 132 }
 
@@ -56,6 +61,7 @@ function send(state: AskState): void {
 /** Puts the bar away; an answer being written carries on. */
 function hide(): void {
   shot = null
+  send({ state: 'closed' }) // stops the microphone
   if (win && !win.isDestroyed()) win.hide()
 }
 
@@ -83,7 +89,7 @@ export async function toggle(): Promise<void> {
     shot = await capture(display)
     canvas.remember(shot)
     await loaded
-    send({ state: 'idle', followUp: brain.followingUp() })
+    send({ state: 'idle', followUp: brain.followingUp(), ...(await hearing()) })
   } catch (e) {
     await loaded
     send({ state: 'error', message: `Couldn't see the screen: ${(e as Error).message}` })
@@ -140,11 +146,20 @@ ipcMain.on('ask:submit', async (_e, question: unknown) => {
   }
 })
 
+/** Whether the bar should listen, or why it can't. */
+async function hearing(): Promise<{ listen: boolean; note?: string }> {
+  if (!listen.ready()) return { listen: false }
+  if (await listen.microphone()) return { listen: true }
+  return { listen: false, note: 'The microphone is off for screen-ink: turn it on in System Settings → Privacy & Security → Microphone.' }
+}
+
+listen.serve(() => (win && !win.isDestroyed() ? win.webContents : null))
+
 ipcMain.on('ask:cancel', close)
 
 ipcMain.on('ask:new', () => {
   if (running) return
   brain.reset()
   brain.warm()
-  send({ state: 'idle', followUp: false })
+  send({ state: 'idle', followUp: false, listen: false })
 })

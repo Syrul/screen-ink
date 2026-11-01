@@ -51,6 +51,26 @@
       input::placeholder {
         color: rgba(255, 255, 255, 0.4);
       }
+      .mic {
+        display: none;
+        flex: none;
+        width: 12px;
+        height: 12px;
+        margin: 0 4px;
+        border-radius: 50%;
+        background: #ff5a36;
+        box-shadow: 0 0 0 calc(var(--level, 0) * 9px) rgba(255, 90, 54, 0.28);
+        transition: box-shadow 0.06s;
+      }
+      .listening .mic {
+        display: block;
+      }
+      .listening .pen {
+        display: none;
+      }
+      input.heard {
+        color: rgba(255, 255, 255, 0.72);
+      }
       .thinking input {
         color: rgba(255, 255, 255, 0.55);
       }
@@ -105,6 +125,7 @@
     <main id="root">
       <div class="bar">
         <span class="pen">✎</span>
+        <span class="mic" id="mic"></span>
         <input id="question" placeholder="Ask about your screen…" autocomplete="off" spellcheck="false" />
         <span class="spinner"></span>
         <span class="hint" id="hint">↵ ask · esc close</span>

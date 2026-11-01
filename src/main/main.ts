@@ -8,6 +8,7 @@ import * as ask from './ask'
 import { displayUnderCursor } from './capture'
 import { ASK_SHORTCUT, CLEAR_SHORTCUT, INK, PORT } from './config'
 import { startMcp } from './mcp'
+import * as listen from './listen'
 import * as overlay from './overlay'
 import * as sense from './sense'
 import * as voice from './voice'
@@ -53,6 +54,7 @@ app.whenReady().then(() => {
   }
   globalShortcut.register(CLEAR_SHORTCUT, clearInk)
   void voice.load()
+  void listen.load()
   sense.start()
 
   tray = new Tray(nativeImage.createEmpty())
@@ -65,6 +67,7 @@ app.whenReady().then(() => {
       { label: 'Draw demo', click: () => drawDemo() },
       { label: 'Draw 3D demo', click: () => drawDemo(true) },
       { label: 'Speak answers', type: 'checkbox', checked: voice.isOn(), click: item => voice.setOn(item.checked) },
+      { label: 'Listen when the bar opens', type: 'checkbox', checked: listen.isOn(), click: item => listen.setOn(item.checked) },
       { label: 'Caption what it says', type: 'checkbox', checked: overlay.captionsOn(), click: item => overlay.setCaptions(item.checked) },
       { type: 'separator' },
       { label: `MCP on ${url}`, enabled: false },
