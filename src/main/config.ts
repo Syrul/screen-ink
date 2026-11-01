@@ -19,6 +19,8 @@ export const ANSWER_SECONDS = 45
 export const TOOLS = env.SCREEN_INK_TOOLS ?? 'WebSearch'
 /** The narration voice: a Kokoro voice (default af_heart), `say` or `say:<macOS voice>` for macOS's own, or `off`. */
 export const VOICE = env.SCREEN_INK_VOICE || 'af_heart'
+/** Whether to caption the narration on screen as it is spoken: `off` starts with captions off. */
+export const CAPTIONS = env.SCREEN_INK_CAPTIONS !== 'off'
 
 export const INSTRUCTIONS = [
   "screen-ink lets you look at the user's screen and draw on it, like a friend pointing with a pen.",

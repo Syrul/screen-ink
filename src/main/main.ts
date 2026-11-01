@@ -65,6 +65,7 @@ app.whenReady().then(() => {
       { label: 'Draw demo', click: () => drawDemo() },
       { label: 'Draw 3D demo', click: () => drawDemo(true) },
       { label: 'Speak answers', type: 'checkbox', checked: voice.isOn(), click: item => voice.setOn(item.checked) },
+      { label: 'Caption what it says', type: 'checkbox', checked: overlay.captionsOn(), click: item => overlay.setCaptions(item.checked) },
       { type: 'separator' },
       { label: `MCP on ${url}`, enabled: false },
       { label: 'Copy "claude mcp add" command', click: () => clipboard.writeText(addCommand) },

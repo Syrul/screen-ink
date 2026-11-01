@@ -2,6 +2,7 @@
 // macOS's `say` stands in until Kokoro has loaded, and for good with SCREEN_INK_VOICE=say. The overlay asks for a
 // mark's words as the mark starts and waits for them, so `speak` resolves once they are said (or cut off by a clear
 // or a new drawing). `prepare` renders a drawing's lines ahead, in order, so each is ready when its mark starts.
+// `speak` also says when the words start and how long they'll take, so the overlay can caption them.
 import { app } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
@@ -23,8 +24,15 @@ let current: ChildProcess | null = null
 let turn = 0
 let batch = 0
 let queue: Promise<unknown> = Promise.resolve()
-let clips = new Map<string, Promise<string | null>>()
+let clips = new Map<string, Promise<Clip | null>>()
 let n = 0
+interface Clip {
+  file: string
+  seconds: number
+}
+
+const SAY_WORDS_PER_SECOND = 2.9 // macOS's say at its default rate
+
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'screen-ink-voice-'))
 process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }))
 
@@ -64,29 +72,31 @@ export function prepare(lines: string[]): Promise<unknown> {
   return clips.get(lines[0]) ?? Promise.resolve()
 }
 
-async function render(tts: KokoroTTS, text: string): Promise<string | null> {
+async function render(tts: KokoroTTS, text: string): Promise<Clip | null> {
   try {
     const audio = await tts.generate(text, { voice: KOKORO_VOICE })
     const file = path.join(dir, `${++n}.wav`)
     await audio.save(file)
-    return file
+    return { file, seconds: audio.audio.length / audio.sampling_rate }
   } catch (e) {
     console.error(`screen-ink: Kokoro couldn't say "${text}": ${(e as Error).message}`)
     return null
   }
 }
 
-export async function speak(text: string): Promise<void> {
+/** Says `text`, calling `onStart` with its length in seconds as the words begin. Resolves once they are said. */
+export async function speak(text: string, onStart?: (seconds: number) => void): Promise<void> {
   stop()
   const mine = turn
   if (!on || !text.trim()) return
   if (kokoro && !clips.has(text)) void prepare([text])
-  const file = (await clips.get(text)) ?? null
+  const clip = (await clips.get(text)) ?? null
   clips.delete(text)
   if (mine !== turn) return
-  if (file) {
-    await play('afplay', [file])
-    fs.rm(file, { force: true }, () => {})
+  onStart?.(clip?.seconds ?? text.split(/\s+/).length / SAY_WORDS_PER_SECOND)
+  if (clip) {
+    await play('afplay', [clip.file])
+    fs.rm(clip.file, { force: true }, () => {})
   } else {
     // The words go in on stdin, so nothing in them can read as a flag.
     await play('say', [...(MAC_VOICE ? ['-v', MAC_VOICE] : []), '-f', '-'], text)

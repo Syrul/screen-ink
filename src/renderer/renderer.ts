@@ -16,6 +16,7 @@ declare global {
       onDraw(cb: (p: DrawPayload) => void): void
       onClear(cb: (o: { instant: boolean }) => void): void
       speak(text: string): Promise<void>
+      onSaying(cb: (s: { text: string; seconds: number }) => void): void
     }
   }
 }
@@ -25,6 +26,7 @@ const under = document.getElementById('under') as unknown as SVGGElement
 const over = document.getElementById('over') as unknown as SVGGElement
 const cards = document.getElementById('cards') as HTMLDivElement
 const caption = document.getElementById('caption') as HTMLDivElement
+const subtitle = document.getElementById('subtitle') as HTMLDivElement
 
 const PEN = 4 // the pen's width in points
 const GAP = 0.12 // seconds between marks
@@ -57,14 +59,71 @@ function clock(): number {
   return clockAt
 }
 
-const speak = (text: string): Promise<void> => window.inkBridge?.speak(text) ?? Promise.resolve()
+function speak(text: string): Promise<void> {
+  if (window.inkBridge) return window.inkBridge.speak(text)
+  // The browser preview has no voice: it captions the words at speaking pace instead.
+  const seconds = text.split(/\s+/).length / 2.9
+  showSaying(text, seconds)
+  return new Promise(r => setTimeout(r, seconds * 1000))
+}
+
+// ---- captions: the line being said, each word lighting up in turn
+
+let saying = ''
+let wordTimers: number[] = []
+let hideTimer = 0
+
+function showSaying(text: string, seconds: number): void {
+  if (caption.classList.contains('show') && caption.textContent === text) return // the caption is what's being read
+  wordTimers.forEach(clearTimeout)
+  clearTimeout(hideTimer)
+  saying = text
+  const words = text.split(/\s+/).filter(Boolean)
+  // A word takes time by its length, and a little more where the voice pauses after it.
+  const weight = (w: string) => w.length + 1 + (/[.!?]$/.test(w) ? 5 : /[,;:]$/.test(w) ? 3 : 0)
+  const total = words.reduce((sum, w) => sum + weight(w), 0)
+  let at = 0
+  subtitle.replaceChildren(
+    ...words.map((w, i) => {
+      const span = document.createElement('span')
+      span.textContent = i < words.length - 1 ? `${w} ` : w
+      wordTimers.push(window.setTimeout(() => span.classList.add('said'), (at / total) * seconds * 1000))
+      at += weight(w)
+      return span
+    }),
+  )
+  subtitle.classList.add('show')
+}
+
+/** The line is out: take it down, unless the next one comes first. */
+function doneSaying(text: string): void {
+  if (saying !== text) return
+  clearTimeout(hideTimer)
+  hideTimer = window.setTimeout(() => {
+    saying = ''
+    subtitle.classList.remove('show')
+  }, 700)
+}
+
+function stopSaying(): void {
+  wordTimers.forEach(clearTimeout)
+  wordTimers = []
+  clearTimeout(hideTimer)
+  saying = ''
+  subtitle.classList.remove('show')
+}
 
 /** Speaks `text` at `from` and holds the clock at `to` until it has been said. */
 function narrate(text: string, from: number, to: number): void {
   let said: Promise<unknown> = Promise.resolve()
   const quiet = () => {}
   playing.push(
-    { at: from, dur: 0, frame: quiet, start: () => (said = Promise.race([speak(text), new Promise(r => setTimeout(r, LONGEST_WORDS * 1000))])) },
+    {
+      at: from,
+      dur: 0,
+      frame: quiet,
+      start: () => (said = Promise.race([speak(text), new Promise(r => setTimeout(r, LONGEST_WORDS * 1000))]).finally(() => doneSaying(text))),
+    },
     {
       at: to,
       dur: 0,
@@ -274,6 +333,7 @@ function wipe(): void {
   over.replaceChildren()
   cards.replaceChildren()
   caption.classList.remove('show')
+  stopSaying()
   fade(false)
 }
 
@@ -282,6 +342,7 @@ function clearInk(instant: boolean): void {
   if (instant) return wipe()
   fade(true)
   caption.classList.remove('show')
+  stopSaying()
   setTimeout(() => gen === generation && wipe(), 320)
 }
 
@@ -328,6 +389,7 @@ function draw(p: DrawPayload): void {
 if (window.inkBridge) {
   window.inkBridge.onDraw(draw)
   window.inkBridge.onClear(o => clearInk(o.instant))
+  window.inkBridge.onSaying(s => showSaying(s.text, s.seconds))
 } else {
   document.body.classList.add('preview')
   const mock = document.getElementById('mock') as HTMLDivElement

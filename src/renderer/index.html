@@ -51,11 +51,40 @@
         height: 100%;
         overflow: visible;
       }
-      #caption {
+      #bottom {
         position: fixed;
         left: 50%;
         bottom: 48px;
-        max-width: min(56vw, 720px);
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        width: min(56vw, 720px);
+      }
+      #subtitle {
+        max-width: 100%;
+        padding: 7px 14px;
+        border-radius: 10px;
+        background: rgba(21, 23, 28, 0.72);
+        color: #fff;
+        font: 500 17px/1.4 -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        text-align: center;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      #subtitle.show {
+        opacity: 1;
+      }
+      #subtitle span {
+        opacity: 0.42;
+        transition: opacity 0.12s;
+      }
+      #subtitle span.said {
+        opacity: 1;
+      }
+      #caption {
+        max-width: 100%;
         padding: 11px 18px;
         border-radius: 14px;
         background: rgba(21, 23, 28, 0.88);
@@ -64,12 +93,12 @@
         text-align: center;
         box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
         opacity: 0;
-        transform: translate(-50%, 8px);
+        transform: translateY(8px);
         transition: opacity 0.25s, transform 0.25s;
       }
       #caption.show {
         opacity: 1;
-        transform: translate(-50%, 0);
+        transform: none;
       }
 
       /* ---- browser preview only: a mock window laid out in the demo's 1280×800 units */
@@ -193,7 +222,10 @@
       <g id="under"></g>
       <g id="over"></g>
     </svg>
-    <div id="caption"></div>
+    <div id="bottom">
+      <div id="subtitle"></div>
+      <div id="caption"></div>
+    </div>
     <button class="replay" id="replay">Pen demo (2)</button>
     <button class="replay" id="replay3d" style="left: 130px">3D demo (3)</button>
     <script src="renderer.js"></script>

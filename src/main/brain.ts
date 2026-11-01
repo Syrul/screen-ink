@@ -7,7 +7,7 @@
 // One conversation is one `claude` process. It starts when the prompt bar opens, so it is ready by the time the
 // question is, and waits a while after each answer: a question asked meanwhile continues the conversation ("and
 // then?") with a fresh screenshot. Answers stream: each mark is handed over as soon as Claude has written it, so
-// drawing starts while the rest is still being written.
+// drawing starts while the rest is still being written. Cutting in interrupts the answer, not the conversation.
 import { spawn, type ChildProcess } from 'node:child_process'
 import os from 'node:os'
 import { z } from 'zod'
@@ -49,6 +49,7 @@ what explains the idea, not every bolt.${/\bWebSearch\b/.test(TOOLS) ? WEB : ''}
 const TIMEOUT_MS = 120_000 // for one answer
 const FOLLOW_UP_MS = 120_000 // how long a conversation waits for the next question
 const UNUSED_MS = 60_000 // how long one started for a question that never came waits
+const INTERRUPT_MS = 3000 // how long an interrupted answer may take to stop before the conversation is ended
 
 export interface Listener {
   /** A tool is running (a web search, say): what the bar shows meanwhile. */
@@ -81,8 +82,11 @@ interface Turn {
 
 class Conversation {
   readonly narrate: boolean
-  answered = 0
+  /** Questions asked so far, answered or not. */
+  asked = 0
   ended = false
+  /** The bar is open on this conversation, waiting for a question. */
+  waiting = false
   private child: ChildProcess
   private turn: Turn | null = null
   private out = ''
@@ -121,6 +125,8 @@ class Conversation {
     if (this.ended) return Promise.reject(new Error('The conversation has ended.'))
     if (this.turn) return Promise.reject(new Error('Still answering the last question.'))
     this.hold()
+    this.waiting = false
+    this.asked++
     const message = {
       type: 'user',
       message: {
@@ -148,6 +154,14 @@ class Conversation {
   release(ms: number): void {
     this.hold()
     if (!this.ended && !this.turn) this.expiry = setTimeout(() => this.close(), ms)
+  }
+
+  /** Stops the answer being written; the conversation carries on. */
+  interrupt(): void {
+    const turn = this.turn
+    if (!turn) return
+    this.child.stdin!.write(JSON.stringify({ type: 'control_request', request_id: `stop-${Date.now()}`, request: { subtype: 'interrupt' } }) + '\n')
+    setTimeout(() => this.turn === turn && this.close(), INTERRUPT_MS)
   }
 
   close(): void {
@@ -181,11 +195,10 @@ class Conversation {
     } else if (m.type === 'result') {
       this.turn = null
       clearTimeout(turn.timer)
-      if (m.is_error) return turn.reject(new Error(String(m.result || m.subtype)))
+      if (!this.waiting) this.release(FOLLOW_UP_MS)
+      if (m.is_error) return turn.reject(new Error(m.subtype === 'error_during_execution' ? 'Interrupted' : String(m.result || m.subtype)))
       const parsed = answerSchema.safeParse(m.structured_output)
       if (!parsed.success) return turn.reject(new Error("Claude's answer didn't fit the drawing format."))
-      this.answered++
-      this.release(FOLLOW_UP_MS)
       turn.resolve(parsed.data)
     }
   }
@@ -211,16 +224,19 @@ export function warm(): void {
   if (current && current.narrate !== voice.isOn()) reset() // its system prompt says whether to narrate
   if (!current) current = new Conversation(voice.isOn())
   current.hold()
+  current.waiting = true
 }
 
 /** The bar closed without a question. */
 export function idle(): void {
-  current?.release(current.answered ? FOLLOW_UP_MS : UNUSED_MS)
+  if (!current) return
+  current.waiting = false
+  current.release(current.asked ? FOLLOW_UP_MS : UNUSED_MS)
 }
 
 /** Whether the next question continues an earlier one. */
 export function followingUp(): boolean {
-  return !!current && current.answered > 0
+  return !!current && current.asked > 0
 }
 
 /** Ends the conversation: the next question starts a new one. */
@@ -229,13 +245,13 @@ export function reset(): void {
   current = null
 }
 
-/** Asks about `shot`, continuing the conversation if there is one. Aborting ends it. */
+/** Asks about `shot`, continuing the conversation if there is one. Aborting interrupts the answer. */
 export async function askClaude(question: string, shot: Capture, signal: AbortSignal, listener: Listener = {}): Promise<Answer> {
   const list = describe(await shot.elements)
   if (signal.aborted) throw new Error('Cancelled')
   warm()
   const convo = current!
-  const stop = () => convo.close()
+  const stop = () => convo.interrupt()
   signal.addEventListener('abort', stop, { once: true })
   try {
     return await convo.ask(question, shot, list, listener)

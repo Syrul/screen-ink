@@ -3,6 +3,7 @@ import { BrowserWindow, ipcMain, type Display } from 'electron'
 import path from 'node:path'
 import { speaksCaption } from '../shared/caption'
 import type { DrawPayload } from '../shared/marks'
+import { CAPTIONS } from './config'
 import * as voice from './voice'
 
 const FIRST_WORDS_WAIT_MS = 1500 // the most a drawing waits for its first words to be ready
@@ -41,10 +42,19 @@ function overlayWindow(): BrowserWindow {
   return win
 }
 
-// The page asks for each mark's words as it draws; the answer comes once they are said.
-ipcMain.handle('ink:speak', (e, text: unknown) =>
-  win && !win.isDestroyed() && e.sender === win.webContents && typeof text === 'string' ? voice.speak(text) : undefined,
-)
+let captions = CAPTIONS
+export const captionsOn = () => captions
+export function setCaptions(value: boolean): void {
+  captions = value
+}
+
+// The page asks for each mark's words as it draws; the answer comes once they are said. Meanwhile it is told when
+// they start and how long they take, to caption them.
+ipcMain.handle('ink:speak', (e, text: unknown) => {
+  if (!win || win.isDestroyed() || e.sender !== win.webContents || typeof text !== 'string') return
+  const page = win.webContents
+  return voice.speak(text, seconds => captions && !page.isDestroyed() && page.send('ink:saying', { text, seconds }))
+})
 
 /** Moves the overlay over `display` and draws. */
 export async function draw(display: Display, payload: DrawPayload): Promise<void> {
