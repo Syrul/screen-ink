@@ -5,28 +5,19 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { screen } from 'electron'
 import { z } from 'zod'
 import { drawShape } from '../shared/marks'
+import * as canvas from './canvas'
 import { capture, displayUnderCursor, screenAccess } from './capture'
+import { INSTRUCTIONS } from './config'
 import * as overlay from './overlay'
 
 export interface InkOptions {
   port: number
   token: string
-  ink: string
 }
-
-// The last screenshot fixes the display and coordinate space `draw` uses. It outlives requests on purpose.
-let last: { displayId: number; width: number; height: number } | null = null
-
-const INSTRUCTIONS = [
-  "screen-ink lets you look at the user's screen and draw on it, like a friend pointing with a pen.",
-  "Call screenshot, then draw in that screenshot's coordinates.",
-  'Point at things instead of covering them: ring or frame the target, put a short label pill beside it, number steps with badges, and arrow from your words to the target.',
-  'Use the fewest marks that answer, say the rest in the caption, and clear when the user is done.',
-].join(' ')
 
 const text = (t: string, isError = false) => ({ content: [{ type: 'text' as const, text: t }], isError })
 
-function buildServer(opts: InkOptions): McpServer {
+function buildServer(): McpServer {
   const server = new McpServer({ name: 'screen-ink', version: '0.1.0' }, { instructions: INSTRUCTIONS })
 
   server.registerTool(
@@ -48,7 +39,7 @@ function buildServer(opts: InkOptions): McpServer {
       const d = display === 'primary' ? screen.getPrimaryDisplay() : displayUnderCursor()
       try {
         const shot = await capture(d)
-        last = { displayId: d.id, width: shot.width, height: shot.height }
+        canvas.remember(shot)
         return {
           content: [
             { type: 'image' as const, data: shot.jpeg.toString('base64'), mimeType: 'image/jpeg' },
@@ -74,10 +65,12 @@ function buildServer(opts: InkOptions): McpServer {
       inputSchema: drawShape,
     },
     async args => {
-      if (!last) return text('Call screenshot first: draw uses its coordinates.', true)
-      const d = screen.getAllDisplays().find(x => x.id === last!.displayId)
-      if (!d) return text('The display from the last screenshot is gone. Take a new screenshot.', true)
-      await overlay.draw(d, { ...args, ppu: d.size.width / last.width, ink: opts.ink })
+      let d
+      try {
+        d = await canvas.draw(args)
+      } catch (e) {
+        return text((e as Error).message, true)
+      }
       const fade = args.fadeAfter ? `, fading ${args.fadeAfter}s after it finishes` : ', staying until cleared'
       return text(`Drew ${args.marks.length} mark${args.marks.length === 1 ? '' : 's'} on display ${d.id}${fade}.`)
     },
@@ -132,7 +125,7 @@ export function startMcp(opts: InkOptions): http.Server {
     } catch {
       return reply(res, 400, 'Body must be JSON')
     }
-    const server = buildServer(opts)
+    const server = buildServer()
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

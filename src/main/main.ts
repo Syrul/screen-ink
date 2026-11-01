@@ -1,16 +1,14 @@
-// screen-ink: a menu-bar app that serves the MCP tools and owns the overlay.
+// screen-ink: a menu-bar app that serves the MCP tools, owns the overlay, and answers the ask shortcut.
 import { app, clipboard, globalShortcut, Menu, nativeImage, Tray } from 'electron'
 import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { DEMO_CAPTION, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
+import * as ask from './ask'
 import { displayUnderCursor } from './capture'
+import { ASK_SHORTCUT, CLEAR_SHORTCUT, INK, PORT } from './config'
 import { startMcp } from './mcp'
 import * as overlay from './overlay'
-
-const PORT = Number(process.env.SCREEN_INK_PORT) || 7377
-const INK = /^#[0-9a-fA-F]{6}$/.test(process.env.SCREEN_INK_COLOR ?? '') ? process.env.SCREEN_INK_COLOR! : '#FF5A36'
-const CLEAR_SHORTCUT = 'Control+Alt+Escape'
 
 let tray: Tray | null = null
 
@@ -41,28 +39,34 @@ app.whenReady().then(() => {
   const url = `http://127.0.0.1:${PORT}/mcp`
   const addCommand = `claude mcp add --transport http screen-ink ${url} --header "Authorization: Bearer $(cat '${file}')"`
 
-  startMcp({ port: PORT, token, ink: INK }).on('error', e => {
+  startMcp({ port: PORT, token }).on('error', e => {
     console.error(`screen-ink: can't serve on ${url}: ${e.message}`)
     app.quit()
   })
-  globalShortcut.register(CLEAR_SHORTCUT, overlay.clear)
+  const toggleAsk = () => void ask.toggle()
+  const clearInk = () => overlay.clear()
+  if (!globalShortcut.register(ASK_SHORTCUT, toggleAsk)) {
+    console.error(`screen-ink: ${ASK_SHORTCUT} is taken by another app; set SCREEN_INK_HOTKEY to another shortcut.`)
+  }
+  globalShortcut.register(CLEAR_SHORTCUT, clearInk)
 
   tray = new Tray(nativeImage.createEmpty())
   tray.setTitle('✎')
   tray.setToolTip('screen-ink')
   tray.setContextMenu(
     Menu.buildFromTemplate([
+      { label: 'Ask about the screen…', accelerator: ASK_SHORTCUT, click: toggleAsk },
+      { label: 'Clear', accelerator: CLEAR_SHORTCUT, click: clearInk },
+      { label: 'Draw demo', click: drawDemo },
+      { type: 'separator' },
       { label: `MCP on ${url}`, enabled: false },
       { label: 'Copy "claude mcp add" command', click: () => clipboard.writeText(addCommand) },
-      { type: 'separator' },
-      { label: 'Draw demo', click: drawDemo },
-      { label: 'Clear', accelerator: CLEAR_SHORTCUT, click: overlay.clear },
       { type: 'separator' },
       { label: 'Quit screen-ink', role: 'quit' },
     ]),
   )
 
-  console.log(`screen-ink: MCP on ${url}\nAdd it to Claude Code with:\n  ${addCommand}`)
+  console.log(`screen-ink: MCP on ${url}, ask with ${ASK_SHORTCUT}\nAdd it to Claude Code with:\n  ${addCommand}`)
   if (process.env.SCREEN_INK_DEMO) drawDemo()
 })
 

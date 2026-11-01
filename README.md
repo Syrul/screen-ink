@@ -2,11 +2,13 @@
 
 A menu-bar app that lets any MCP agent (Claude Code, Codex, …) look at your screen and draw on it: rings,
 arrows, name pills, step badges, dashed frames, highlights and handwriting, animated like a pen, in a
-transparent click-through overlay. The agent runs on whatever subscription its CLI is signed into.
+transparent click-through overlay. Or press **⌥⇧Space**, ask a question, and your local `claude` CLI answers
+by drawing. Either way it runs on whatever subscription the CLI is signed into.
 
 ```
 agent ──MCP (HTTP, 127.0.0.1:7377)──▶ screen-ink main ──IPC──▶ overlay window (SVG + perfect-freehand)
-          screenshot / draw / clear        │
+          screenshot / draw / clear        │  ▲
+                                           │  └─ ⌥⇧Space prompt bar ──▶ claude -p (screenshot + question → marks)
                                            └─ desktopCapturer (screenshot, scaled to ≤1280 wide)
 ```
 
@@ -20,8 +22,23 @@ sfw npm ci
 npm start
 ```
 
-A ✎ appears in the menu bar. Its menu has **Draw demo** (draws a sample over your screen without needing
-any permission), **Clear** (⌃⌥⎋ anywhere), and **Copy "claude mcp add" command**.
+A ✎ appears in the menu bar. Its menu has **Ask about the screen…** (⌥⇧Space anywhere), **Clear** (⌃⌥⎋
+anywhere), **Draw demo** (draws a sample over your screen without needing any permission), and
+**Copy "claude mcp add" command**.
+
+## Ask with the shortcut
+
+Press ⌥⇧Space. screen-ink screenshots the display under the mouse, then opens a prompt bar on it. Type a
+question (macOS Dictation works in the bar too) and press ↵. It runs:
+
+```
+claude -p --safe-mode --tools "" --model sonnet --json-schema <the drawing schema> …
+```
+
+with the screenshot and your question, and draws the answer for 45 seconds. `--safe-mode` keeps your login
+but skips your hooks, CLAUDE.md, skills and MCP servers, so the call is quick (about 3–7 seconds with
+Sonnet) and none of your setup leaks in. Esc closes the bar and cancels a question in flight; pressing the
+shortcut again does the same.
 
 The first `screenshot` asks macOS for Screen Recording access. In development the permission belongs to
 **Electron**. Turn it on in System Settings → Privacy & Security → Screen & System Audio Recording, then
@@ -81,17 +98,24 @@ Every mark but `spotlight` takes `color` and `delay`. The schema lives in
 - `npm run preview` opens the overlay page in your browser, where it draws the demo over a mock window
   (press R to replay). The quickest way to work on the look.
 - `npm run typecheck`, `npm run build`.
-- Settings: `SCREEN_INK_PORT` (default 7377), `SCREEN_INK_COLOR` (ink hex, default `#FF5A36`),
-  `SCREEN_INK_DEMO=1` (draw the demo on launch).
+- Settings ([src/main/config.ts](src/main/config.ts)): `SCREEN_INK_PORT` (default 7377), `SCREEN_INK_COLOR`
+  (ink hex, default `#FF5A36`), `SCREEN_INK_HOTKEY` (default `Alt+Shift+Space`, an
+  [Electron accelerator](https://www.electronjs.org/docs/latest/api/accelerator)), `SCREEN_INK_MODEL`
+  (default `sonnet`), `SCREEN_INK_CLAUDE` (path to `claude` when it isn't on `PATH`, as when launched from
+  Finder), `SCREEN_INK_DEMO=1` (draw the demo on launch).
 
 | File | Role |
 | --- | --- |
-| [src/main/main.ts](src/main/main.ts) | Menu bar, token, shortcut, startup |
+| [src/main/main.ts](src/main/main.ts) | Menu bar, token, shortcuts, startup |
 | [src/main/mcp.ts](src/main/mcp.ts) | MCP server and tool descriptions (the drawing "skill" the agent reads) |
+| [src/main/ask.ts](src/main/ask.ts) | The shortcut: screenshot, prompt bar, answer |
+| [src/main/brain.ts](src/main/brain.ts) | Runs `claude -p` on a screenshot and question; its system prompt |
+| [src/main/canvas.ts](src/main/canvas.ts) | The last screenshot's coordinate space, shared by MCP and the shortcut |
 | [src/main/capture.ts](src/main/capture.ts) | Screenshots and the unit → point scale |
 | [src/main/overlay.ts](src/main/overlay.ts) | The transparent, click-through window |
 | [src/renderer/renderer.ts](src/renderer/renderer.ts) | Marks → animated beats |
 | [src/renderer/shapes.ts](src/renderer/shapes.ts) | Hand-drawn geometry |
+| [src/renderer/ask.ts](src/renderer/ask.ts) | The prompt bar |
 
 ## Security
 
@@ -104,8 +128,9 @@ so keep it private.
 1. **Grounding.** Agents' raw coordinates drift by tens of pixels. Add an `elements` list to `screenshot`
    (Accessibility tree frames plus Vision OCR boxes, each with an id) and let marks target `"el_42"`
    instead of `[x, y]`.
-2. **Hotkey and voice.** A global shortcut that captures the screen, listens (SFSpeechRecognizer), and
-   runs `claude -p --input-format stream-json --output-format stream-json --tools ""` with the
-   screenshot, drawing marks as they stream in.
-3. **Speech-paced drawing.** Speak each step (AVSpeechSynthesizer) and spread its strokes across it.
-4. **Native port.** The renderer is plain web code, so it can move into a WKWebView in a Swift app.
+2. **Faster answers.** Stream the answer (`--include-partial-messages`) and draw each mark as soon as it
+   is complete, instead of waiting for the whole JSON.
+3. **Voice.** Push-to-talk on the shortcut, and speak each step (AVSpeechSynthesizer) while its strokes draw.
+4. **3D figures.** A `figure` mark: a small Three.js scene built from parts (box, cylinder, gear, …) that
+   grow in one by one, with labels pinned to points and simple motion, for explaining how things work.
+5. **Native port.** The renderer is plain web code, so it can move into a WKWebView in a Swift app.

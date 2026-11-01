@@ -52,8 +52,8 @@ export async function draw(display: Display, payload: DrawPayload): Promise<void
   w.webContents.send('ink:draw', payload)
 }
 
-export function clear(): void {
-  if (win && !win.isDestroyed()) win.webContents.send('ink:clear', { instant: false })
+export function clear(instant = false): void {
+  if (win && !win.isDestroyed()) win.webContents.send('ink:clear', { instant })
 }
 
 /** Runs `fn` with the overlay invisible, so a screenshot shows the screen and not our marks. */
