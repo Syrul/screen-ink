@@ -33,8 +33,9 @@ permission), **Speak answers** (voice on or off), and **Copy "claude mcp add" co
 
 ## Ask with the shortcut
 
-Press ⌥⇧Space. screen-ink screenshots the display under the mouse, then opens a prompt bar on it. Type a
-question (macOS Dictation works in the bar too) and press ↵. It runs:
+Press ⌥⇧Space. screen-ink screenshots the display under the mouse, then opens a prompt bar on it, listening.
+Say the question: the words show in the bar as you speak, and a one-second pause asks it. Or type: the first key
+stops the listening and leaves what was heard there to edit, and ↵ asks (see [Listening](#listening)). It runs:
 
 ```
 claude -p --safe-mode --tools WebSearch --allowedTools WebSearch --model sonnet --json-schema <the drawing schema> …
@@ -54,7 +55,7 @@ seconds. It's Claude Code's own WebSearch tool, pre-approved because there's no 
 prompt. `SCREEN_INK_TOOLS` picks other built-in tools (comma-separated, `""` for none). WebFetch is off by
 default, since a page on your screen could talk Claude into sending what it sees to any URL. Esc closes the
 bar and cancels a question in flight; pressing the shortcut again does the same, and pressing it while an
-answer is still drawing stops that answer and opens a new bar.
+answer is still drawing stops that answer and opens a new bar (see [Voice](#voice)).
 
 **Follow-ups.** The `claude` process starts when the bar opens, so it's ready by the time you've typed, and
 stays for two minutes after each answer. Ask again within that time and the bar says *Ask a follow-up*: the
@@ -101,7 +102,13 @@ list.
 Every mark can carry a `say`: words spoken aloud as the mark starts to draw. The drawing waits at the end of
 each mark until its words are out, so the pen keeps pace with the voice. With voice on, the shortcut asks
 Claude to narrate its answer this way, and MCP agents are told about `say` too. A drawing with no `say` at
-all has its caption read out instead. Clearing the screen or starting a new drawing cuts the voice off.
+all has its caption read out instead. Clearing the screen or starting a new drawing cuts the voice off, and so
+does pressing the shortcut: the bar opens at once, and if Claude was still writing, the answer stops there
+while the conversation carries on, so the next question can build on it.
+
+What's being said is captioned above the answer, each word lighting up as it's spoken (paced from the length
+of the rendered audio, so it keeps time without word-level timings). **Caption what it says** in the menu
+turns this off, and `SCREEN_INK_CAPTIONS=off` starts with it off.
 
 The voice is [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), an open 82M-parameter speech model
 (Apache 2.0), run on the CPU through [kokoro-js](https://www.npmjs.com/package/kokoro-js), so nothing leaves
@@ -113,6 +120,19 @@ marks come up (about half a second each on an M4 Max), so each mark's voice star
 `SCREEN_INK_VOICE` picks a Kokoro voice (default `af_heart`; 54 in all, such as `af_bella`, `am_adam`,
 `bf_emma` and `bm_george`, listed in [kokoro-js](https://www.npmjs.com/package/kokoro-js)), or `say` (or
 `say:Ava`) for a macOS voice.
+
+## Listening
+
+The bar hears the question with [Moonshine](https://github.com/usefulsensors/moonshine), an open 61M-parameter
+speech recognizer (MIT) built for live transcription, run on the CPU through transformers.js, so your voice never
+leaves your Mac. It turns a spoken question into text in well under a tenth of a second (about 60 ms on an M4
+Max), quick enough to redo the whole question every 0.6 seconds while you talk; Whisper base took four times as
+long for the same words. The first launch downloads it, about 65 MB, next to the voice model. Speech is whatever is
+well above the room's level, measured as the bar opens; a second of quiet after it ends the question, and seven
+seconds of nothing stops the listening.
+
+The first time the bar listens macOS asks for the microphone (in development, for Electron). **Listen when the bar
+opens** in the menu turns listening off, and `SCREEN_INK_LISTEN=off` starts with it off.
 
 ## Connect an agent
 
@@ -192,6 +212,7 @@ It draws with three.js: toon shading, inked creases and a drawn outline, so it m
   default), `SCREEN_INK_CLAUDE` (path to `claude` when it isn't on `PATH`, as when launched from
   Finder), `SCREEN_INK_TOOLS` (Claude Code tools the shortcut may use, default `WebSearch`), `SCREEN_INK_VOICE`
   (a Kokoro voice, default `af_heart`; `say` or `say:<macOS voice>`; or `off` to start with voice off),
+  `SCREEN_INK_CAPTIONS=off` (start without captions), `SCREEN_INK_LISTEN=off` (the bar only takes typing),
   `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
 
 | File | Role |
@@ -207,12 +228,14 @@ It draws with three.js: toon shading, inked creases and a drawn outline, so it m
 | [native/sense.swift](native/sense.swift) | The helper: Accessibility walk, Vision OCR, splitting lines by their ink |
 | [src/main/overlay.ts](src/main/overlay.ts) | The transparent, click-through window |
 | [src/main/voice.ts](src/main/voice.ts) | Speaks each mark's words with Kokoro, or `say` until it's ready |
+| [src/main/listen.ts](src/main/listen.ts) | Turns the bar's recording into text with Moonshine |
 | [src/renderer/renderer.ts](src/renderer/renderer.ts) | Marks → animated beats |
 | [src/renderer/shapes.ts](src/renderer/shapes.ts) | Hand-drawn geometry |
 | [src/renderer/figure.ts](src/renderer/figure.ts) | 3D figures: parts, motion, framing, labels |
 | [src/renderer/common.ts](src/renderer/common.ts) | Timing, easing and DOM helpers both renderers share |
 | [src/shared/demo.ts](src/shared/demo.ts) | The pen and 3D demos |
-| [src/renderer/ask.ts](src/renderer/ask.ts) | The prompt bar |
+| [src/renderer/ask.ts](src/renderer/ask.ts) | The prompt bar: typing, or listening with the words live |
+| [src/renderer/mic.ts](src/renderer/mic.ts) | Records the question at 16 kHz and tells when the speaker has finished |
 
 ## Security
 
@@ -222,8 +245,8 @@ so keep it private.
 
 ## Next
 
-1. **Push-to-talk.** Hold the shortcut and ask out loud, instead of typing (macOS Dictation works in the bar
-   today).
+1. **Hold to talk.** The bar listens as it opens; holding the shortcut while speaking needs key-up events,
+   which Electron's global shortcuts don't give.
 2. **Truer mechanisms.** Figures are only as right as the model's mechanics: it can still spin a gear the
    wrong way or misplace a part. Constraints (mesh these two gears, join this rod to that crank) would let
    screen-ink work out positions and speeds itself.
