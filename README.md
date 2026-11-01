@@ -190,14 +190,32 @@ Every mark takes `say` and `delay`, and every mark but `spotlight` takes `color`
 ### 3D figures
 
 A `figure` stands a card on the screen and builds a model in it from up to 40 parts, one by one: `box`,
-`cylinder`, `tube`, `sphere`, `cone`, `torus`, `capsule`, `gear`, `spring` and `arrow`. Each part has a
-`size`, `at` and `rot` in the figure's own units (y up), a `color`, an `opacity` below 1 to see inside a
-housing, and an optional `motion`: `spin`, `slide` or `swing` about an axis, with a `speed` in cycles per
-second and a `phase` to keep linked parts in step (`pivot` moves the point it turns around). Up to 8
-`labels` name parts or points; they sit in the card's margins with leader lines and follow their part as it
-moves. The camera frames the whole model from `view` (yaw and pitch), and `turntable` slowly turns it.
+`cylinder`, `tube`, `sphere` (or an egg, with three radii), `cone`, `torus`, `capsule`, `gear`, `spring` and
+`arrow`, plus three that take their shape from points: `lathe` turns a profile round the y axis (a valve, a
+bottle), `extrude` gives a flat outline depth (a cam, a bracket) and `pipe` runs a tube smoothly through a path
+(a hose, a wire). Each part has a `size`, `at` and `rot` in the figure's own units (y up), a `color`, an
+`opacity` below 1 to see inside a housing, a `material` (`steel`, `brass`, `copper`, `glass`, `rubber`,
+`plastic`, or the default flat `matte`), and an optional `motion`: `spin`, `slide` or `swing` about an axis,
+with a `speed` in cycles per second and a `phase` to keep linked parts in step (`pivot` moves the point it turns
+around). `copies` repeats a part round an axis (bolts on a flange, cylinders in a radial engine), in a row, or
+mirrored, with a phase step so copies can move in sequence. Up to 8 `labels` name parts or points; they sit
+beside the model with leader lines and follow their part as it moves. The camera frames the whole model from
+`view` (yaw and pitch), and `turntable` slowly turns it.
 
-It draws with three.js: toon shading, inked creases and a drawn outline, so it matches the pen marks.
+After the build, up to 8 `steps` walk through how it works, each with its own `say`: it can move the camera
+(`view`, with `zoom`, and `look` to centre on a part), cut the model open (`cut` along an axis, through chosen
+parts, taking away the half nearest the camera and showing the cut faces), pull it apart (`explode`), fade all
+but a few parts (`focus`), and play, pause or slow the motion. A step's change takes about a second and then
+waits for its words, so the picture keeps pace with the voice; settings carry on until a later step changes
+them.
+
+The card can be handled: drag it to turn the model, and click a part to ask about it. The question goes to the
+shortcut's conversation ("tell me about the crank…"), and the answer is drawn beside the figure, which stays.
+The overlay lets clicks through everywhere else; it takes the mouse only while it is over a card, and a drawing
+doesn't fade while you're handling it.
+
+It draws with three.js: toon shading, inked creases and a drawn outline, so it matches the pen marks; metals and
+glass are lit by a soft studio room so they shine, and keep the ink.
 
 ## Develop
 

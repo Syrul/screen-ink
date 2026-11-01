@@ -17,6 +17,8 @@ declare global {
       onClear(cb: (o: { instant: boolean }) => void): void
       speak(text: string): Promise<void>
       onSaying(cb: (s: { text: string; seconds: number }) => void): void
+      pointer(over: boolean): void
+      ask(question: string): void
     }
   }
 }
@@ -45,6 +47,7 @@ let playing: Scheduled[] = []
 let endsAt = 0
 let raf = 0
 let fadeTimer = 0
+let fadeAfter = 0 // seconds, once the current drawing's fade-out has been set going
 let generation = 0
 
 // Beats run on a drawing clock: real time, except that it stops while a mark waits for its words.
@@ -294,7 +297,7 @@ function beatsFor(m: Mark, g: SVGGElement, color: string, P: (p: Point) => Point
     case 'line':
       return [pen(g, (m.points as Point[]).map(P), color)]
     case 'figure':
-      return figureBeats(m, R(m.box as Box), color, cards)
+      return figureBeats(m, R(m.box as Box), color, cards, { ask })
     case 'spotlight': {
       const r = R(m.box as Box)
       const id = `spot${++maskId}`
@@ -328,6 +331,11 @@ function wipe(): void {
   endsAt = 0
   waiting = null
   clearTimeout(fadeTimer)
+  fadeAfter = 0
+  if (overCard) {
+    overCard = false
+    window.inkBridge?.pointer(false) // its card is gone: let clicks through again
+  }
   disposeFigures()
   under.replaceChildren()
   over.replaceChildren()
@@ -346,10 +354,35 @@ function clearInk(instant: boolean): void {
   setTimeout(() => gen === generation && wipe(), 320)
 }
 
+/** A part of a figure was clicked. The browser preview shows the question instead of asking it. */
+function ask(question: string): void {
+  if (window.inkBridge) return window.inkBridge.ask(question)
+  caption.textContent = question
+  caption.classList.add('show')
+}
+
+function fadeLater(seconds: number): void {
+  clearTimeout(fadeTimer)
+  fadeTimer = window.setTimeout(() => clearInk(false), seconds * 1000)
+}
+
+// The window lets clicks through to the apps below, except over a figure's card, which the user can turn and click.
+// While the mouse is on a card the drawing doesn't fade.
+let overCard = false
+function trackPointer(e: MouseEvent): void {
+  const over = !!document.querySelector('.card.dragging') || !!document.elementFromPoint(e.clientX, e.clientY)?.closest('.card')
+  if (over === overCard) return
+  overCard = over
+  window.inkBridge?.pointer(over)
+  if (over) clearTimeout(fadeTimer)
+  else if (fadeAfter) fadeLater(fadeAfter)
+}
+
 function draw(p: DrawPayload): void {
   generation++
   if (!p.append) wipe()
   clearTimeout(fadeTimer)
+  fadeAfter = 0
   playing = playing.filter(b => !b.fades)
   fade(false)
 
@@ -364,25 +397,35 @@ function draw(p: DrawPayload): void {
     cursor += m.delay ?? 0
     const from = cursor
     let prevAt = cursor
+    let said = !m.say
     for (const b of beatsFor(m, g, color, P, R)) {
       const at = b.together ? prevAt : cursor
+      if (b.say) {
+        // A beat with words of its own (a figure's step) starts once the mark's words are out, and says its own.
+        if (!said) narrate(m.say!, from, at)
+        said = true
+        narrate(b.say, at, at + b.dur)
+      }
       playing.push({ ...b, at })
       prevAt = at
       cursor = Math.max(cursor, at + b.dur)
     }
-    if (m.say) narrate(m.say, from, cursor)
+    if (!said) narrate(m.say!, from, cursor)
     cursor += GAP
   }
   // Nothing narrated: read the caption out over the whole drawing instead.
   if (speaksCaption(p)) narrate(p.caption!, start, cursor)
   endsAt = cursor
+  // In time order, so when a slow frame finds several beats due, a beat starts before a later wait for words can
+  // hold it back (the sort keeps the order of beats due together).
+  playing.sort((a, b) => a.at - b.at)
 
   if (p.caption) {
     caption.textContent = p.caption
     caption.classList.add('show')
   }
   const after = p.fadeAfter
-  if (after) playing.push({ at: cursor, dur: 0, fades: true, frame: () => {}, start: () => (fadeTimer = window.setTimeout(() => clearInk(false), after * 1000)) })
+  if (after) playing.push({ at: cursor, dur: 0, fades: true, frame: () => {}, start: () => fadeLater((fadeAfter = after)) })
   if (!raf) raf = requestAnimationFrame(tick)
 }
 
@@ -390,6 +433,7 @@ if (window.inkBridge) {
   window.inkBridge.onDraw(draw)
   window.inkBridge.onClear(o => clearInk(o.instant))
   window.inkBridge.onSaying(s => showSaying(s.text, s.seconds))
+  document.addEventListener('mousemove', trackPointer)
 } else {
   document.body.classList.add('preview')
   const mock = document.getElementById('mock') as HTMLDivElement

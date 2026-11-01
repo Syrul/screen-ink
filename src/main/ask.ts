@@ -4,6 +4,7 @@
 // the conversation; ⌘N in the bar starts a new one. The bar listens as it opens, so the question can be spoken.
 import { BrowserWindow, ipcMain } from 'electron'
 import path from 'node:path'
+import { words } from '../shared/caption'
 import type { MarkInput } from '../shared/marks'
 import * as brain from './brain'
 import * as canvas from './canvas'
@@ -98,8 +99,29 @@ export async function toggle(): Promise<void> {
   w.focus()
 }
 
-ipcMain.on('ask:submit', async (_e, question: unknown) => {
+ipcMain.on('ask:submit', (_e, question: unknown) => {
   if (!shot || running || typeof question !== 'string' || !question.trim()) return
+  void answer(question.trim(), shot, false)
+})
+
+/** Asks about a part the user clicked in a figure. The answer is drawn beside the figure, which stays. */
+export async function askAbout(question: string): Promise<void> {
+  if (running || win?.isVisible()) return
+  try {
+    const shot = await capture(displayUnderCursor())
+    canvas.remember(shot)
+    await answer(question, shot, true)
+  } catch (e) {
+    await canvas.draw({ marks: [], caption: `Couldn't ask: ${(e as Error).message}`, append: true, fadeAfter: ANSWER_SECONDS }).catch(() => {})
+  }
+}
+
+ipcMain.on('ink:ask', (e, question: unknown) => {
+  if (e.sender === overlay.page() && typeof question === 'string' && question.trim()) void askAbout(question.trim().slice(0, 400))
+})
+
+/** Asks Claude and draws the answer as it is written. `keep` adds it to what is on screen instead of replacing it. */
+async function answer(question: string, shot: Capture, keep: boolean): Promise<void> {
   const abort = (running = latest = new AbortController())
   send({ state: 'thinking' })
 
@@ -114,12 +136,12 @@ ipcMain.on('ask:submit', async (_e, question: unknown) => {
     if (streamed++) return queue({ marks: [mark], append: true, speakCaption: false })
     hide()
     // Marks that carry their own words are narrated; otherwise the caption is read over them.
-    captionRead = !mark.say && caption !== undefined
-    queue({ marks: [mark], caption, speakCaption: captionRead })
+    captionRead = !words(mark).length && caption !== undefined
+    queue({ marks: [mark], caption, append: keep, speakCaption: captionRead })
   }
 
   try {
-    const answer = await brain.askClaude(question.trim(), shot, abort.signal, {
+    const answer = await brain.askClaude(question, shot, abort.signal, {
       onStep: note => !abort.signal.aborted && send({ state: 'thinking', note }),
       onCaption: c => (caption = c),
       onMark,
@@ -127,13 +149,11 @@ ipcMain.on('ask:submit', async (_e, question: unknown) => {
     if (abort.signal.aborted) return
     running = null
     hide()
-    const rest = answer.marks.slice(streamed)
-    const marksSpeak = answer.marks.some(m => m.say)
     queue({
-      marks: rest,
+      marks: answer.marks.slice(streamed),
       caption: answer.caption,
-      append: streamed > 0,
-      speakCaption: !captionRead && !marksSpeak,
+      append: keep || streamed > 0,
+      speakCaption: !captionRead && !answer.marks.some(m => words(m).length),
       fadeAfter: ANSWER_SECONDS,
     })
     await drawing
@@ -141,10 +161,10 @@ ipcMain.on('ask:submit', async (_e, question: unknown) => {
     if (abort.signal.aborted) return
     running = null
     const message = (e as Error).message
-    if (streamed) queue({ marks: [], caption: `Stopped: ${message}`, append: true, speakCaption: false, fadeAfter: ANSWER_SECONDS })
+    if (streamed || keep) queue({ marks: [], caption: `Stopped: ${message}`, append: true, speakCaption: false, fadeAfter: ANSWER_SECONDS })
     else send({ state: 'error', message })
   }
-})
+}
 
 /** Whether the bar should listen, or why it can't. */
 async function hearing(): Promise<{ listen: boolean; note?: string }> {

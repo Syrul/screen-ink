@@ -19,6 +19,7 @@
         inset: 0;
         width: 100%;
         height: 100%;
+        pointer-events: none;
       }
       #cards {
         position: fixed;
@@ -34,8 +35,27 @@
       .card canvas {
         position: absolute;
         left: 0;
+        cursor: grab;
+      }
+      .card.dragging canvas {
+        cursor: grabbing;
+      }
+      .card-hint {
+        position: absolute;
+        right: 12px;
+        bottom: 8px;
+        color: rgba(48, 51, 58, 0.55);
+        font: 500 11px -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        opacity: 0;
+        transition: opacity 0.2s;
+        pointer-events: none;
+      }
+      .card:hover .card-hint,
+      .card.dragging .card-hint {
+        opacity: 1;
       }
       .card-title {
+        pointer-events: none;
         position: absolute;
         left: 12px;
         top: 10px;
@@ -50,8 +70,10 @@
         width: 100%;
         height: 100%;
         overflow: visible;
+        pointer-events: none;
       }
       #bottom {
+        pointer-events: none;
         position: fixed;
         left: 50%;
         bottom: 48px;

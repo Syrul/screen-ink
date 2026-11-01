@@ -24,26 +24,40 @@ export const DEMO_FIGURE_CAPTION = 'The piston slides up and down; the rod turns
 export const DEMO_FIGURE_MARKS: Mark[] = [
   {
     kind: 'figure',
-    box: [640, 200, 470, 470],
+    box: [640, 170, 500, 500],
     title: 'How a piston turns a crank',
     turntable: false,
     view: { yaw: 28, pitch: 16 },
-    say:
-      'Here is how a piston turns a crank. The piston slides up and down inside the cylinder. ' +
-      'The rod turns that push into the crank spinning round, and the gears pass the spin on to the next shaft.',
+    say: 'Here is how a piston turns a crank.',
     parts: [
-      { id: 'cylinder', shape: 'tube', size: [0.62, 0.55, 1.5], at: [0, 1.3, 0], color: '#C9D3DF', opacity: 0.35 },
+      { id: 'cylinder', shape: 'tube', size: [0.62, 0.55, 1.5], at: [0, 1.3, 0], material: 'steel' },
+      {
+        id: 'head',
+        shape: 'lathe',
+        points: [[0.66, 0], [0.66, 0.12], [0.5, 0.24], [0.12, 0.3], [0.001, 0.3]],
+        at: [0, 2.05, 0],
+        material: 'steel',
+      },
+      { id: 'bolt', shape: 'cylinder', size: [0.045, 0.14], at: [0.58, 2.2, 0], material: 'brass', copies: { count: 6, around: 'y' } },
+      { id: 'fuel line', shape: 'pipe', size: [0.035], path: [[0, 0, 0], [0.35, 0.25, 0], [0.8, 0.15, 0.2], [1.05, -0.35, 0.25]], at: [0.12, 2.32, 0], material: 'rubber' },
       { id: 'piston', shape: 'cylinder', size: [0.53, 0.45], at: [0, 1.25, 0], color: '#E7A9A3', motion: { kind: 'slide', axis: 'y', amount: 0.28, speed: 0.4 } },
       { id: 'rod', shape: 'box', size: [0.14, 1.0, 0.14], at: [0, 0.5, 0], color: '#D9D4C7', motion: { kind: 'slide', axis: 'y', amount: 0.28, speed: 0.4 } },
       { id: 'crank', shape: 'cylinder', size: [0.45, 0.18], at: [0, -0.25, 0], rot: [90, 0, 0], color: '#A9C1DD', motion: { kind: 'spin', axis: 'y', speed: 0.4 } },
-      { id: 'big gear', shape: 'gear', size: [0.62, 0.16, 16], at: [0, -0.25, -0.3], rot: [90, 0, 0], color: '#F2C48D', motion: { kind: 'spin', axis: 'y', speed: 0.4 } },
-      { id: 'small gear', shape: 'gear', size: [0.42, 0.16, 11], at: [0.97, -0.25, -0.3], rot: [90, 0, 0], color: '#B9DDB5', motion: { kind: 'spin', axis: 'y', speed: -0.58, phase: 0.05 } },
+      { id: 'big gear', shape: 'gear', size: [0.62, 0.16, 16], at: [0, -0.25, -0.3], rot: [90, 0, 0], material: 'brass', motion: { kind: 'spin', axis: 'y', speed: 0.4 } },
+      { id: 'small gear', shape: 'gear', size: [0.42, 0.16, 11], at: [0.97, -0.25, -0.3], rot: [90, 0, 0], material: 'steel', motion: { kind: 'spin', axis: 'y', speed: -0.58, phase: 0.05 } },
     ],
     labels: [
       { text: 'Cylinder', part: 'cylinder', at: [0.62, 0.55, 0] },
       { text: 'Piston', part: 'piston' },
       { text: 'Crank', part: 'crank' },
       { text: 'Gears', part: 'small gear' },
+    ],
+    steps: [
+      { say: 'Cut the cylinder open, and the piston is inside, sliding up and down.', cut: { axis: 'z', parts: ['cylinder', 'head'] }, view: { yaw: 18, pitch: 10 } },
+      { say: 'The rod turns that push into the crank spinning round.', focus: ['piston', 'rod', 'crank'], motion: 'slow' },
+      { say: 'Pulled apart, each piece is easy to see.', focus: [], explode: 0.8, motion: 'pause', cut: { axis: 'off' } },
+      { say: 'Put back together, the gears pass the spin on to the next shaft.', explode: 0, motion: 'play', look: 'small gear', view: { zoom: 1.5, yaw: 40 } },
+      { say: 'And that is the whole machine.', look: 'all', view: { zoom: 1, yaw: 28, pitch: 16 } },
     ],
   },
 ]

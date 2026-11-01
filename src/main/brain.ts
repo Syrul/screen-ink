@@ -44,7 +44,11 @@ mark the nearest step that is visible (the menu that holds it, say).
 When the question is how something works or how it is put together (an engine, a joint, a gearbox, a lock), answer
 with one figure: build it from simple parts that sit where they really would, the moving ones with motion that shows
 the mechanism, see-through housings over what's inside, and labels on the three or four parts that matter. Keep it to
-what explains the idea, not every bolt.${/\bWebSearch\b/.test(TOOLS) ? WEB : ''}${FOLLOW_UPS}${narrate ? `\n${NARRATE} The caption stays the short written version.` : ''}`
+what explains the idea, not every bolt. Turned parts (a valve, a bottle) are lathes, flat cut parts (a cam, a bracket)
+are extrudes, bent ones (a hose) are pipes, and a set of like parts is one part with copies; give parts real materials
+where it helps them read (steel, brass, glass). Then walk through it in two to four steps, each saying one thing while
+the figure shows it: cut the housing open, pull the parts apart, focus on the part being talked about, slow the motion
+or move in close. The figure's own say is a short opening; the steps carry the explanation.${/\bWebSearch\b/.test(TOOLS) ? WEB : ''}${FOLLOW_UPS}${narrate ? `\n${NARRATE} The caption stays the short written version.` : ''}`
 
 const TIMEOUT_MS = 120_000 // for one answer
 const FOLLOW_UP_MS = 120_000 // how long a conversation waits for the next question

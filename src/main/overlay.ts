@@ -1,7 +1,7 @@
 // The overlay: one transparent, click-through window that sits over a whole display, above everything.
 import { BrowserWindow, ipcMain, type Display } from 'electron'
 import path from 'node:path'
-import { speaksCaption } from '../shared/caption'
+import { speaksCaption, words } from '../shared/caption'
 import type { DrawPayload } from '../shared/marks'
 import { CAPTIONS } from './config'
 import * as voice from './voice'
@@ -35,12 +35,21 @@ function overlayWindow(): BrowserWindow {
   })
   win.setAlwaysOnTop(true, 'screen-saver')
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-  win.setIgnoreMouseEvents(true)
+  // Clicks go through to the apps below, but moves still reach the page, so it can take the mouse while it is over
+  // a figure's card (to turn it or ask about a part) and let it go again after.
+  win.setIgnoreMouseEvents(true, { forward: true })
   // Keep our own ink out of screenshots where macOS honours it; capture also hides the window (see hiddenWhile).
   win.setContentProtection(true)
   loaded = win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
   return win
 }
+
+ipcMain.on('ink:pointer', (e, over: unknown) => {
+  if (win && !win.isDestroyed() && e.sender === win.webContents) win.setIgnoreMouseEvents(over !== true, { forward: true })
+})
+
+/** The overlay page, to check who is talking. */
+export const page = () => (win && !win.isDestroyed() ? win.webContents : null)
 
 let captions = CAPTIONS
 export const captionsOn = () => captions
@@ -64,7 +73,7 @@ export async function draw(display: Display, payload: DrawPayload): Promise<void
     voice.forget()
   }
   // Render the words ahead, and start once the first are ready.
-  const lines = [...payload.marks.flatMap(m => m.say ?? []), ...(speaksCaption(payload) ? [payload.caption!] : [])]
+  const lines = [...payload.marks.flatMap(words), ...(speaksCaption(payload) ? [payload.caption!] : [])]
   const first = voice.prepare(lines)
   await Promise.all([loaded, Promise.race([first, new Promise(r => setTimeout(r, FIRST_WORDS_WAIT_MS))])])
   const b = display.bounds

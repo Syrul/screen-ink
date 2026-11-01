@@ -7,6 +7,8 @@ export interface Beat {
   together?: boolean
   start?: () => void
   frame: (t: number) => void
+  /** Words said as it starts; the drawing waits at its end until they are out. */
+  say?: string
 }
 
 export const NS = 'http://www.w3.org/2000/svg'
