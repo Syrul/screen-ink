@@ -1,0 +1,24 @@
+{
+  "name": "screen-ink",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A transparent overlay that lets any MCP agent look at your screen and draw on it.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "start": "npm run build && electron .",
+    "preview": "npm run build && open dist/renderer/index.html"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "perfect-freehand": "^1.2.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "electron": "^45.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

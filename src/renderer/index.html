@@ -1,0 +1,168 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <title>screen-ink</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      #ink {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #caption {
+        position: fixed;
+        left: 50%;
+        bottom: 48px;
+        max-width: min(56vw, 720px);
+        padding: 11px 18px;
+        border-radius: 14px;
+        background: rgba(21, 23, 28, 0.88);
+        color: #fff;
+        font: 500 15px/1.4 -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        text-align: center;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+        opacity: 0;
+        transform: translate(-50%, 8px);
+        transition: opacity 0.25s, transform 0.25s;
+      }
+      #caption.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      /* ---- browser preview only: a mock window laid out in the demo's 1280×800 units */
+      #mock,
+      #replay {
+        display: none;
+      }
+      .preview {
+        background: linear-gradient(135deg, #8aa7c9, #c9b8d8);
+      }
+      .preview #mock {
+        display: block;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1280px;
+        height: 800px;
+        transform-origin: 0 0;
+        font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        color: #1d2129;
+      }
+      .preview #replay {
+        display: block;
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 1;
+        font: 600 12px -apple-system, system-ui, sans-serif;
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 0;
+        background: #15171c;
+        color: #fff;
+        cursor: pointer;
+      }
+      #mock > * {
+        position: absolute;
+      }
+      .win {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+      }
+      .bar {
+        background: #f4f5f7;
+        border-radius: 12px 12px 0 0;
+        border-bottom: 1px solid #e3e5e9;
+        box-sizing: border-box;
+      }
+      .lights i {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+        background: #ff5f57;
+      }
+      .lights i:nth-child(2) {
+        background: #febc2e;
+      }
+      .lights i:nth-child(3) {
+        background: #28c840;
+      }
+      .title {
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #2f6bff;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        border-radius: 8px;
+      }
+      .side {
+        background: #f7f8fa;
+        border-radius: 8px;
+        padding: 14px;
+        box-sizing: border-box;
+        font-size: 14px;
+        line-height: 36px;
+        color: #4a505c;
+      }
+      .h1 {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .p {
+        font-size: 18px;
+        color: #353b45;
+      }
+      .ph {
+        height: 12px;
+        border-radius: 6px;
+        background: #e8eaee;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="mock">
+      <div class="win" style="left: 140px; top: 90px; width: 1000px; height: 620px"></div>
+      <div class="bar" style="left: 140px; top: 90px; width: 1000px; height: 90px"></div>
+      <div class="lights" style="left: 162px; top: 106px"><i></i><i></i><i></i></div>
+      <div class="title" style="left: 420px; top: 124px">Q3 Launch Plan</div>
+      <div class="btn" style="left: 982px; top: 120px; width: 108px; height: 32px">Share</div>
+      <div class="side" style="left: 150px; top: 192px; width: 210px; height: 500px">
+        Launch plan<br />Budget.xlsx<br />Press kit<br />Screenshots<br />Retro notes
+      </div>
+      <div class="h1" style="left: 420px; top: 296px">Launch checklist for the new app</div>
+      <div class="p" style="left: 420px; top: 342px">Owners sign off by Friday</div>
+      <div class="ph" style="left: 420px; top: 396px; width: 400px"></div>
+      <div class="ph" style="left: 420px; top: 424px; width: 360px"></div>
+      <div class="ph" style="left: 420px; top: 452px; width: 380px"></div>
+      <div class="ph" style="left: 420px; top: 480px; width: 300px"></div>
+    </div>
+    <svg id="ink" xmlns="http://www.w3.org/2000/svg">
+      <g id="under"></g>
+      <g id="over"></g>
+    </svg>
+    <div id="caption"></div>
+    <button id="replay">Replay (R)</button>
+    <script src="renderer.js"></script>
+  </body>
+</html>
