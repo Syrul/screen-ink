@@ -15,7 +15,7 @@ function show(s: AskState): void {
   root.classList.toggle('thinking', s.state === 'thinking')
   root.classList.toggle('error', s.state === 'error')
   input.readOnly = s.state === 'thinking'
-  message.textContent = s.state === 'error' ? s.message : ''
+  message.textContent = s.state === 'error' ? s.message : s.state === 'thinking' ? (s.note ?? '') : ''
   if (s.state === 'idle') input.value = ''
   if (s.state !== 'thinking') input.focus()
 }
@@ -30,7 +30,12 @@ if (bridge) {
 } else {
   document.body.classList.add('preview')
   input.value = 'where do I change the font size?'
-  const states: AskState[] = [{ state: 'idle' }, { state: 'thinking' }, { state: 'error', message: "Claude's answer didn't fit the drawing format." }]
+  const states: AskState[] = [
+    { state: 'idle' },
+    { state: 'thinking' },
+    { state: 'thinking', note: 'Searching “VS Code change editor font size”' },
+    { state: 'error', message: "Claude's answer didn't fit the drawing format." },
+  ]
   let i = 0
   input.addEventListener('keydown', e => e.key === 'Enter' && show(states[++i % states.length]))
 }

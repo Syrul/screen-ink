@@ -1,12 +1,13 @@
 // Asks the local `claude` CLI about a screenshot, on whatever account it is signed into. --safe-mode skips the
 // user's hooks, CLAUDE.md, skills and MCP servers (fast, and nothing of theirs leaks in) but keeps their login;
-// --json-schema makes the answer arrive as a validated drawing.
+// --json-schema makes the answer arrive as a validated drawing. The built-in tools in TOOLS (web search by default)
+// stay on and are pre-approved, since nobody is there to answer a permission prompt.
 import { spawn } from 'node:child_process'
 import os from 'node:os'
 import { z } from 'zod'
 import { markSchema } from '../shared/marks'
 import type { Capture } from './capture'
-import { CLAUDE, INSTRUCTIONS, MODEL } from './config'
+import { CLAUDE, INSTRUCTIONS, MODEL, TOOLS } from './config'
 
 export const answerSchema = z.object({
   caption: z.string().max(400).describe('The answer in one or two short sentences, shown at the bottom of the screen.'),
@@ -17,6 +18,11 @@ export type Answer = z.infer<typeof answerSchema>
 // Claude Code validates --json-schema with draft-07 and rejects zod's default 2020-12 `$schema`.
 const { $schema: _, ...ANSWER_JSON_SCHEMA } = z.toJSONSchema(answerSchema, { target: 'draft-7' })
 
+const WEB = `
+When the answer turns on facts the screen doesn't show and that may have changed since you were trained (versions,
+prices, release notes, news, how a product works today), search the web first: one or two standard searches, then
+answer from what you found. Don't search for what the screenshot already tells you.`
+
 const SYSTEM = `${INSTRUCTIONS}
 You get one screenshot of the user's screen and one question. Answer by drawing on their screen: marks in the
 screenshot's coordinates, and a caption with the answer itself. Put marks on the exact thing the user needs (the
@@ -25,15 +31,25 @@ mark the nearest step that is visible (the menu that holds it, say).
 When the question is how something works or how it is put together (an engine, a joint, a gearbox, a lock), answer
 with one figure: build it from simple parts that sit where they really would, the moving ones with motion that shows
 the mechanism, see-through housings over what's inside, and labels on the three or four parts that matter. Keep it to
-what explains the idea, not every bolt.`
+what explains the idea, not every bolt.${/\bWebSearch\b/.test(TOOLS) ? WEB : ''}`
 
-const TIMEOUT_MS = 90_000
+const TIMEOUT_MS = 120_000
 
-export function askClaude(question: string, shot: Capture, signal: AbortSignal): Promise<Answer> {
+/** What the bar shows while a tool runs. */
+function step(name: string, input: Record<string, unknown> = {}): string {
+  if (name === 'WebSearch') return `Searching “${input.query}”`
+  if (name === 'WebFetch') {
+    try { return `Reading ${new URL(String(input.url)).hostname}` } catch {}
+  }
+  if (name === 'StructuredOutput') return 'Drawing the answer'
+  return `Using ${name}`
+}
+
+export function askClaude(question: string, shot: Capture, signal: AbortSignal, onStep: (note: string) => void = () => {}): Promise<Answer> {
   const args = [
     '-p', '--safe-mode', '--no-session-persistence',
     '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
-    '--model', MODEL, '--tools', '',
+    '--model', MODEL, '--tools', TOOLS, ...(TOOLS ? ['--allowedTools', TOOLS] : []),
     '--system-prompt', SYSTEM,
     '--json-schema', JSON.stringify(ANSWER_JSON_SCHEMA),
   ]
@@ -53,7 +69,18 @@ export function askClaude(question: string, shot: Capture, signal: AbortSignal):
     const timer = setTimeout(() => child.kill(), TIMEOUT_MS)
     let out = ''
     let err = ''
-    child.stdout.on('data', d => (out += d))
+    let result: any = null
+    const read = (line: string) => {
+      let m
+      try { m = JSON.parse(line) } catch { return }
+      if (m?.type === 'result') result = m
+      else if (m?.type === 'assistant') for (const b of m.message?.content ?? []) if (b.type === 'tool_use') onStep(step(b.name, b.input))
+    }
+    child.stdout.on('data', d => {
+      const lines = (out += d).split('\n')
+      out = lines.pop() ?? ''
+      lines.forEach(read)
+    })
     child.stderr.on('data', d => (err += d))
     child.stdin.on('error', () => {}) // the CLI quit before reading (bad flag, no login): 'close' reports why
     child.on('error', e => {
@@ -64,10 +91,7 @@ export function askClaude(question: string, shot: Capture, signal: AbortSignal):
     child.on('close', code => {
       clearTimeout(timer)
       if (signal.aborted) return
-      const result = out
-        .split('\n')
-        .map(line => { try { return JSON.parse(line) } catch { return null } })
-        .find(m => m?.type === 'result')
+      read(out)
       if (!result) return reject(new Error(err.trim().split('\n').pop() || `claude exited with code ${code}`))
       if (result.is_error) return reject(new Error(String(result.result || result.subtype)))
       const parsed = answerSchema.safeParse(result.structured_output)

@@ -10,6 +10,9 @@ export const CLAUDE = env.SCREEN_INK_CLAUDE || 'claude'
 export const MODEL = env.SCREEN_INK_MODEL || 'sonnet'
 /** Seconds a shortcut answer stays on screen after it finishes drawing. */
 export const ANSWER_SECONDS = 45
+// Claude Code's built-in tools the shortcut may use, all without asking. WebFetch is left out by default because
+// it can send anything on screen to any URL; add it (or Read, Grep, …) here if you want that.
+export const TOOLS = process.env.SCREEN_INK_TOOLS ?? 'WebSearch'
 
 export const INSTRUCTIONS = [
   "screen-ink lets you look at the user's screen and draw on it, like a friend pointing with a pen.",

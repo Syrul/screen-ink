@@ -8,7 +8,7 @@ import { capture, displayUnderCursor, type Capture } from './capture'
 import { ANSWER_SECONDS } from './config'
 import * as overlay from './overlay'
 
-export type AskState = { state: 'idle' } | { state: 'thinking' } | { state: 'error'; message: string }
+export type AskState = { state: 'idle' } | { state: 'thinking'; note?: string } | { state: 'error'; message: string }
 
 const SIZE = { width: 640, height: 132 }
 
@@ -82,7 +82,7 @@ ipcMain.on('ask:submit', async (_e, question: unknown) => {
   const abort = (running = new AbortController())
   send({ state: 'thinking' })
   try {
-    const answer = await askClaude(question.trim(), shot, abort.signal)
+    const answer = await askClaude(question.trim(), shot, abort.signal, note => !abort.signal.aborted && send({ state: 'thinking', note }))
     if (abort.signal.aborted) return
     running = null
     close()
