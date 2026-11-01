@@ -37,7 +37,9 @@ claude -p --safe-mode --tools WebSearch --allowedTools WebSearch --model sonnet 
 
 with the screenshot and your question, and draws the answer for 45 seconds. `--safe-mode` keeps your login
 but skips your hooks, CLAUDE.md, skills and MCP servers, so the call is quick (about 3–7 seconds with
-Sonnet, or about 12 when the answer is a 3D figure) and none of your setup leaks in.
+Sonnet, or about 12 when the answer is a 3D figure) and none of your setup leaks in. It also skips the
+`effortLevel` in your settings, so the CLI's default effort applies unless you set `SCREEN_INK_EFFORT`;
+higher effort places marks more carefully but answers more slowly.
 
 Claude can search the web when the answer depends on something the screen doesn't show and that may have
 changed (versions, prices, docs, news). The bar shows each search while it runs, and a search adds about 10
@@ -140,7 +142,8 @@ It draws with three.js: toon shading, inked creases and a drawn outline, so it m
 - Settings ([src/main/config.ts](src/main/config.ts)): `SCREEN_INK_PORT` (default 7377), `SCREEN_INK_COLOR`
   (ink hex, default `#FF5A36`), `SCREEN_INK_HOTKEY` (default `Alt+Shift+Space`, an
   [Electron accelerator](https://www.electronjs.org/docs/latest/api/accelerator)), `SCREEN_INK_MODEL`
-  (default `sonnet`), `SCREEN_INK_CLAUDE` (path to `claude` when it isn't on `PATH`, as when launched from
+  (default `sonnet`), `SCREEN_INK_EFFORT` (`low`, `medium`, `high`, `xhigh` or `max`; unset, the CLI's
+  default), `SCREEN_INK_CLAUDE` (path to `claude` when it isn't on `PATH`, as when launched from
   Finder), `SCREEN_INK_TOOLS` (Claude Code tools the shortcut may use, default `WebSearch`), `SCREEN_INK_VOICE`
   (a Kokoro voice, default `af_heart`; `say` or `say:<macOS voice>`; or `off` to start with voice off),
   `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).

@@ -8,6 +8,10 @@ export const CLEAR_SHORTCUT = 'Control+Alt+Escape'
 /** The CLI the shortcut asks, and its model. */
 export const CLAUDE = env.SCREEN_INK_CLAUDE || 'claude'
 export const MODEL = env.SCREEN_INK_MODEL || 'sonnet'
+/** low, medium, high, xhigh or max. Unset, the CLI's default applies: --safe-mode skips your settings' effortLevel. */
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+export const EFFORT = EFFORTS.includes(env.SCREEN_INK_EFFORT ?? '') ? env.SCREEN_INK_EFFORT! : ''
+if (env.SCREEN_INK_EFFORT && !EFFORT) console.error(`screen-ink: SCREEN_INK_EFFORT must be one of ${EFFORTS.join(', ')}; using the CLI's default.`)
 /** Seconds a shortcut answer stays on screen after it finishes drawing. */
 export const ANSWER_SECONDS = 45
 // Claude Code's built-in tools the shortcut may use, all without asking. WebFetch is left out by default because

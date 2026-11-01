@@ -8,7 +8,7 @@ import os from 'node:os'
 import { z } from 'zod'
 import { markSchema } from '../shared/marks'
 import type { Capture } from './capture'
-import { CLAUDE, INSTRUCTIONS, MODEL, NARRATE, TOOLS } from './config'
+import { CLAUDE, EFFORT, INSTRUCTIONS, MODEL, NARRATE, TOOLS } from './config'
 import * as voice from './voice'
 
 export const answerSchema = z.object({
@@ -51,7 +51,8 @@ export function askClaude(question: string, shot: Capture, signal: AbortSignal, 
   const args = [
     '-p', '--safe-mode', '--no-session-persistence',
     '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
-    '--model', MODEL, '--tools', TOOLS, ...(TOOLS ? ['--allowedTools', TOOLS] : []),
+    '--model', MODEL, ...(EFFORT ? ['--effort', EFFORT] : []),
+    '--tools', TOOLS, ...(TOOLS ? ['--allowedTools', TOOLS] : []),
     '--system-prompt', system(voice.isOn()),
     '--json-schema', JSON.stringify(ANSWER_JSON_SCHEMA),
   ]
