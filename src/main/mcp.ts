@@ -9,6 +9,7 @@ import * as canvas from './canvas'
 import { capture, displayUnderCursor, screenAccess } from './capture'
 import { INSTRUCTIONS, NARRATE } from './config'
 import * as overlay from './overlay'
+import { describe } from './sense'
 
 export interface InkOptions {
   port: number
@@ -26,7 +27,8 @@ function buildServer(): McpServer {
       title: 'Look at the screen',
       description:
         "Takes a screenshot of one display (without screen-ink's own marks) and makes it the canvas for draw. " +
-        'Returns the image and its size in units: draw coordinates use the same units.',
+        'Returns the image, its size in units (draw coordinates use the same units), and a numbered list of the ' +
+        'buttons, menus, fields and text on screen: name one by its id in a mark to land on it exactly.',
       inputSchema: {
         display: z.enum(['cursor', 'primary']).optional().describe('Which display: the one under the mouse (default) or the main one.'),
       },
@@ -40,6 +42,7 @@ function buildServer(): McpServer {
       try {
         const shot = await capture(d)
         canvas.remember(shot)
+        const elements = describe(await shot.elements)
         return {
           content: [
             { type: 'image' as const, data: shot.jpeg.toString('base64'), mimeType: 'image/jpeg' },
@@ -47,6 +50,7 @@ function buildServer(): McpServer {
               type: 'text' as const,
               text: `Display ${d.id}${d.label ? ` (${d.label})` : ''}: ${shot.width}×${shot.height} units, x right, y down, origin top-left. One unit is ${shot.ppu.toFixed(2)} screen points.`,
             },
+            ...(elements ? [{ type: 'text' as const, text: elements }] : []),
           ],
         }
       } catch (e) {
@@ -65,14 +69,16 @@ function buildServer(): McpServer {
       inputSchema: drawShape,
     },
     async args => {
-      let d
+      let drawn
       try {
-        d = await canvas.draw(args)
+        drawn = await canvas.draw(args)
       } catch (e) {
         return text((e as Error).message, true)
       }
+      const { display: d, drawn: n, missing } = drawn
       const fade = args.fadeAfter ? `, fading ${args.fadeAfter}s after it finishes` : ', staying until cleared'
-      return text(`Drew ${args.marks.length} mark${args.marks.length === 1 ? '' : 's'} on display ${d.id}${fade}.`)
+      const skipped = missing.length ? ` Left out marks on ${missing.join(', ')}: the last screenshot has no such element.` : ''
+      return text(`Drew ${n} mark${n === 1 ? '' : 's'} on display ${d.id}${fade}.${skipped}`)
     },
   )
 

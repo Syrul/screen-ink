@@ -1,9 +1,13 @@
 // The drawing language: what an agent sends to `draw`. Coordinates are in the units of the last
-// screenshot (x right, y down, origin top-left); the overlay maps them to screen points.
+// screenshot (x right, y down, origin top-left); the overlay maps them to screen points. A mark that points at
+// something can name it by the id of an element the screenshot listed instead, and lands on it exactly.
 import { z } from 'zod'
 
 const point = z.array(z.number()).length(2).describe('[x, y]')
 const box = z.array(z.number()).length(4).describe('[x, y, width, height]')
+const element = z.string().regex(/^e\d+$/).describe("The id of an element from the screenshot's list, like e12")
+const target = z.union([box, element]).describe('[x, y, width, height], or an element id (exact)')
+const spot = z.union([point, element]).describe('[x, y], or an element id (exact)')
 const color = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/)
@@ -65,12 +69,12 @@ const figureLabelSchema = z.object({
 })
 
 export const markSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('ring'), box, color, delay, say }).describe('A hand-drawn loop around a box.'),
+  z.object({ kind: z.literal('ring'), box: target, color, delay, say }).describe('A hand-drawn loop around a box.'),
   z
     .object({
       kind: z.literal('arrow'),
-      from: point,
-      to: point,
+      from: spot,
+      to: spot,
       bend: z.number().min(-1).max(1).optional().describe('Curve: 0 straight, ±1 strongly bent.'),
       color,
       delay,
@@ -81,7 +85,7 @@ export const markSchema = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('label'),
       text: z.string().max(60),
-      box: box.optional().describe('The thing being named; the pill sits beside it.'),
+      box: target.optional().describe('The thing being named; the pill sits beside it.'),
       at: point.optional().describe('Or a point the pill sits next to.'),
       side: side.optional().describe('Which side of the box or point. Default: above.'),
       color,
@@ -90,13 +94,13 @@ export const markSchema = z.discriminatedUnion('kind', [
     })
     .describe('A short name in a solid pill, placed beside a box or point, never on top of it.'),
   z
-    .object({ kind: z.literal('badge'), at: point, n: z.union([z.number(), z.string().max(3)]), color, delay, say })
+    .object({ kind: z.literal('badge'), at: spot, n: z.union([z.number(), z.string().max(3)]), color, delay, say })
     .describe('A numbered step badge centred on `at`.'),
   z
-    .object({ kind: z.literal('frame'), box, text: z.string().max(60).optional(), color, delay, say })
+    .object({ kind: z.literal('frame'), box: target, text: z.string().max(60).optional(), color, delay, say })
     .describe('A dashed frame with a faint tint around a region, with an optional title pill.'),
-  z.object({ kind: z.literal('underline'), box, color, delay, say }).describe('A pen line under a box (usually text).'),
-  z.object({ kind: z.literal('highlight'), box, color, delay, say }).describe('A translucent marker stroke over a box of text.'),
+  z.object({ kind: z.literal('underline'), box: target, color, delay, say }).describe('A pen line under a box (usually text).'),
+  z.object({ kind: z.literal('highlight'), box: target, color, delay, say }).describe('A translucent marker stroke over a box of text.'),
   z
     .object({
       kind: z.literal('text'),
@@ -111,7 +115,7 @@ export const markSchema = z.discriminatedUnion('kind', [
   z
     .object({ kind: z.literal('line'), points: z.array(point).min(2).max(200), color, delay, say })
     .describe('A freehand pen line through the points.'),
-  z.object({ kind: z.literal('spotlight'), box, delay, say }).describe('Dims everything except the box.'),
+  z.object({ kind: z.literal('spotlight'), box: target, delay, say }).describe('Dims everything except the box.'),
   z
     .object({
       kind: z.literal('figure'),
@@ -138,7 +142,11 @@ export const drawShape = {
   fadeAfter: z.number().min(0).max(600).optional().describe('Seconds after drawing ends before it fades away. 0 or omitted: stays until cleared.'),
 }
 
-export type Mark = z.infer<typeof markSchema>
+/** A mark as sent, which may name elements. */
+export type MarkInput = z.infer<typeof markSchema>
+type Placed<M> = M extends unknown ? { [K in keyof M]: K extends 'box' | 'at' | 'from' | 'to' ? Exclude<M[K], string> : M[K] } : never
+/** A mark with its element ids replaced by coordinates, as the overlay draws it. */
+export type Mark = Placed<MarkInput>
 export type FigureMark = Extract<Mark, { kind: 'figure' }>
 export type Point = [number, number]
 export type Box = [number, number, number, number]

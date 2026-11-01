@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { markSchema } from '../shared/marks'
 import type { Capture } from './capture'
 import { CLAUDE, EFFORT, INSTRUCTIONS, MODEL, NARRATE, TOOLS } from './config'
+import { describe } from './sense'
 import * as voice from './voice'
 
 export const answerSchema = z.object({
@@ -47,7 +48,8 @@ function step(name: string, input: Record<string, unknown> = {}): string {
   return `Using ${name}`
 }
 
-export function askClaude(question: string, shot: Capture, signal: AbortSignal, onStep: (note: string) => void = () => {}): Promise<Answer> {
+export async function askClaude(question: string, shot: Capture, signal: AbortSignal, onStep: (note: string) => void = () => {}): Promise<Answer> {
+  const list = describe(await shot.elements)
   const args = [
     '-p', '--safe-mode', '--no-session-persistence',
     '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
@@ -62,7 +64,7 @@ export function askClaude(question: string, shot: Capture, signal: AbortSignal, 
       role: 'user',
       content: [
         { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: shot.jpeg.toString('base64') } },
-        { type: 'text', text: `Screenshot: ${shot.width}×${shot.height} units, x right, y down, origin top-left.\nQuestion: ${question}` },
+        { type: 'text', text: `Screenshot: ${shot.width}×${shot.height} units, x right, y down, origin top-left.${list ? `\n${list}` : ''}\nQuestion: ${question}` },
       ],
     },
   }

@@ -9,7 +9,8 @@ out loud as it draws. Or press **⌥⇧Space**, ask a question, and your local `
 agent ──MCP (HTTP, 127.0.0.1:7377)──▶ screen-ink main ──IPC──▶ overlay window (SVG + perfect-freehand, three.js)
           screenshot / draw / clear        │  ▲
                                            │  └─ ⌥⇧Space prompt bar ──▶ claude -p (screenshot + question → marks)
-                                           └─ desktopCapturer (screenshot, scaled to ≤1280 wide)
+                                           ├─ desktopCapturer (screenshot, scaled to ≤1280 wide)
+                                           └─ screen-ink-sense (Swift: Accessibility + Vision OCR → numbered elements)
 ```
 
 ## Run
@@ -21,6 +22,10 @@ sfw npm ci
 ```bash
 npm start
 ```
+
+The build also compiles a small Swift helper, `screen-ink-sense`, with Xcode's command-line tools
+(`xcode-select --install` if you don't have them). Without it everything still works, but marks go where the
+model guesses instead of snapping to real things (see [Pointing exactly](#pointing-exactly)).
 
 A ✎ appears in the menu bar. Its menu has **Ask about the screen…** (⌥⇧Space anywhere), **Clear** (⌃⌥⎋
 anywhere), **Draw demo** and **Draw 3D demo** (samples drawn over your screen without needing any
@@ -51,6 +56,37 @@ shortcut again does the same.
 The first `screenshot` asks macOS for Screen Recording access. In development the permission belongs to
 **Electron**. Turn it on in System Settings → Privacy & Security → Screen & System Audio Recording, then
 restart `npm start`.
+
+## Pointing exactly
+
+A model reading a screenshot is often tens of pixels off, enough to ring the button next to the one it
+means. So every screenshot also comes with a numbered list of what's on screen, and a mark can name an
+element instead of giving coordinates: `{"kind": "ring", "box": "e12"}` lands exactly on element 12.
+
+```
+e5 menu "View" [163, 0, 42, 28]
+e31 button "Go back" [208, 44, 27, 27]
+e58 text "Sun 1 Nov 20:00" [1174, 7, 88, 14]
+```
+
+The list comes from `screen-ink-sense` ([native/sense.swift](native/sense.swift)), a helper that stays
+running and answers in about 0.3 seconds, while you type:
+
+- **Controls** from the Accessibility API: the frontmost app's menu bar and its windows on that display
+  (buttons, menus, fields, checkboxes, tabs, links, rows and text). It skips what's scrolled out of view or
+  behind another window. The frontmost app is the last one you used before the prompt bar opened.
+- **Text** from Vision's OCR, read from a sharper 2560-wide copy of the screenshot so small text holds up.
+  Vision joins words that share a line, so the helper splits a line where the gap between words is wider
+  than the text is tall (a menu bar's titles, a toolbar's labels, table columns), and trims each box to the
+  text's ink. A line inside a control names it when the control has no name of its own (icon buttons in
+  web-based apps often don't).
+
+Accessibility needs permission: the first screenshot asks for it (System Settings → Privacy & Security →
+Accessibility; in development macOS may file it under Electron or under the app you ran `npm start` from).
+Until it's on, the list has the text but not the controls. Ids belong to the screenshot that listed them; a mark naming
+an id the last screenshot didn't have is left out, and `draw` says so. The first time a new build of the
+helper runs, Vision spends up to a minute preparing its model, so the first screenshots may come without a
+list.
 
 ## Voice
 
@@ -98,11 +134,13 @@ bike's gearing work?"* for a 3D figure.
 
 | Tool | What it does |
 | --- | --- |
-| `screenshot` | Screenshot of the display under the mouse (or the main one), without screen-ink's own marks. Fixes the coordinate space for `draw`. |
+| `screenshot` | Screenshot of the display under the mouse (or the main one), without screen-ink's own marks, plus the numbered list of elements on it. Fixes the coordinate space and the ids for `draw`. |
 | `draw` | Draws `marks` in order, plus an optional `caption`. Replaces the current drawing unless `append`; `fadeAfter` seconds makes it fade away. |
 | `clear` | Erases everything. |
 
-Marks (coordinates in screenshot units; `box` is `[x, y, w, h]`, points are `[x, y]`):
+Marks (coordinates in screenshot units; `box` is `[x, y, w, h]`, points are `[x, y]`). A ring's, label's,
+frame's, underline's, highlight's or spotlight's `box`, an arrow's `from` and `to`, and a badge's `at` can be an
+element id instead: a box becomes the element's, an arrow stops at its edge, and a badge sits just left of it.
 
 | kind | fields |
 | --- | --- |
@@ -156,6 +194,8 @@ It draws with three.js: toon shading, inked creases and a drawn outline, so it m
 | [src/main/brain.ts](src/main/brain.ts) | Runs `claude -p` on a screenshot and question; its system prompt |
 | [src/main/canvas.ts](src/main/canvas.ts) | The last screenshot's coordinate space, shared by MCP and the shortcut |
 | [src/main/capture.ts](src/main/capture.ts) | Screenshots and the unit → point scale |
+| [src/main/sense.ts](src/main/sense.ts) | Runs the helper, merges its controls and text into the element list, places marks that name ids |
+| [native/sense.swift](native/sense.swift) | The helper: Accessibility walk, Vision OCR, splitting lines by their ink |
 | [src/main/overlay.ts](src/main/overlay.ts) | The transparent, click-through window |
 | [src/main/voice.ts](src/main/voice.ts) | Speaks each mark's words with Kokoro, or `say` until it's ready |
 | [src/renderer/renderer.ts](src/renderer/renderer.ts) | Marks → animated beats |
@@ -173,14 +213,14 @@ so keep it private.
 
 ## Next
 
-1. **Grounding.** Agents' raw coordinates drift by tens of pixels. Add an `elements` list to `screenshot`
-   (Accessibility tree frames plus Vision OCR boxes, each with an id) and let marks target `"el_42"`
-   instead of `[x, y]`.
-2. **Faster answers.** Stream the answer (`--include-partial-messages`) and draw each mark as soon as it
+1. **Faster answers.** Stream the answer (`--include-partial-messages`) and draw each mark as soon as it
    is complete, instead of waiting for the whole JSON.
-3. **Push-to-talk.** Hold the shortcut and ask out loud, instead of typing (macOS Dictation works in the bar
+2. **Push-to-talk.** Hold the shortcut and ask out loud, instead of typing (macOS Dictation works in the bar
    today).
-4. **Truer mechanisms.** Figures are only as right as the model's mechanics: it can still spin a gear the
+3. **Truer mechanisms.** Figures are only as right as the model's mechanics: it can still spin a gear the
    wrong way or misplace a part. Constraints (mesh these two gears, join this rod to that crank) would let
    screen-ink work out positions and speeds itself.
+4. **Web pages' controls.** Chromium browsers only open their page's Accessibility tree to assistive tech,
+   so on web pages the list has the text but not the buttons and fields. Asking for it (`AXEnhancedUserInterface`)
+   can slow the browser, so it's left off for now.
 5. **Native port.** The renderer is plain web code, so it can move into a WKWebView in a Swift app.

@@ -9,6 +9,7 @@ import { displayUnderCursor } from './capture'
 import { ASK_SHORTCUT, CLEAR_SHORTCUT, INK, PORT } from './config'
 import { startMcp } from './mcp'
 import * as overlay from './overlay'
+import * as sense from './sense'
 import * as voice from './voice'
 
 let tray: Tray | null = null
@@ -52,6 +53,7 @@ app.whenReady().then(() => {
   }
   globalShortcut.register(CLEAR_SHORTCUT, clearInk)
   void voice.load()
+  sense.start()
 
   tray = new Tray(nativeImage.createEmpty())
   tray.setTitle('✎')

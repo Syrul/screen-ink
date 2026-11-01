@@ -23,6 +23,7 @@ export const VOICE = env.SCREEN_INK_VOICE || 'af_heart'
 export const INSTRUCTIONS = [
   "screen-ink lets you look at the user's screen and draw on it, like a friend pointing with a pen.",
   "Call screenshot, then draw in that screenshot's coordinates.",
+  "Where the screenshot lists the thing you mean, name it by its id (a ring's box: \"e12\", an arrow's to: \"e12\"): an id lands exactly on it, coordinates are only your estimate. Use coordinates for what the list doesn't have.",
   'Point at things instead of covering them: ring or frame the target, put a short label pill beside it, number steps with badges, and arrow from your words to the target.',
   'Use the fewest marks that answer, say the rest in the caption, and clear when the user is done.',
   'To explain how something works or is built, stand a figure (a small 3D model with labels and motion) on calm space beside what it explains.',
