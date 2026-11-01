@@ -1,5 +1,6 @@
 // The overlay page: turns marks into animated, hand-drawn SVG. Every mark becomes beats (a pen stroke, a pill
 // popping in, a fade) and beats play one after another, so a drawing appears in the order the agent wrote it.
+// A mark's `say` is spoken as it starts, and the drawing waits at the mark's end until the words are out.
 // Opened in a plain browser (no `window.inkBridge`) it draws the demo over a mock window instead.
 import { getStroke } from 'perfect-freehand'
 import { DEMO_CAPTION, DEMO_FIGURE_CAPTION, DEMO_FIGURE_MARKS, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
@@ -10,7 +11,11 @@ import { arrow, dashes, lengthOf, marker, outlinePath, ring, slice, underline, t
 
 declare global {
   interface Window {
-    inkBridge?: { onDraw(cb: (p: DrawPayload) => void): void; onClear(cb: (o: { instant: boolean }) => void): void }
+    inkBridge?: {
+      onDraw(cb: (p: DrawPayload) => void): void
+      onClear(cb: (o: { instant: boolean }) => void): void
+      speak(text: string): Promise<void>
+    }
   }
 }
 
@@ -24,10 +29,13 @@ const PEN = 4 // the pen's width in points
 const GAP = 0.12 // seconds between marks
 const HAND_FONT = '"Chalkboard SE", "Marker Felt", "Comic Sans MS", cursive'
 const MARKER = '#FFE14D'
+const LONGEST_WORDS = 30 // seconds a mark waits for its words at most
 
 interface Scheduled extends Beat {
   at: number
   started?: boolean
+  /** Starts the fade-out countdown; a new drawing drops it. */
+  fades?: boolean
 }
 
 let playing: Scheduled[] = []
@@ -36,17 +44,54 @@ let raf = 0
 let fadeTimer = 0
 let generation = 0
 
-function tick(): void {
+// Beats run on a drawing clock: real time, except that it stops while a mark waits for its words.
+let clockAt = 0
+let realAt = now()
+let waiting: Promise<void> | null = null
+
+function clock(): number {
   const t = now()
+  if (!waiting) clockAt += t - realAt
+  realAt = t
+  return clockAt
+}
+
+const speak = (text: string): Promise<void> => window.inkBridge?.speak(text) ?? Promise.resolve()
+
+/** Speaks `text` at `from` and holds the clock at `to` until it has been said. */
+function narrate(text: string, from: number, to: number): void {
+  let said: Promise<unknown> = Promise.resolve()
+  const quiet = () => {}
+  playing.push(
+    { at: from, dur: 0, frame: quiet, start: () => (said = Promise.race([speak(text), new Promise(r => setTimeout(r, LONGEST_WORDS * 1000))])) },
+    {
+      at: to,
+      dur: 0,
+      frame: quiet,
+      start: () => {
+        clock()
+        const w = (waiting = said.then(() => {
+          if (waiting !== w) return
+          clock()
+          waiting = null
+        }))
+      },
+    },
+  )
+}
+
+function tick(): void {
+  const t = clock()
   for (const b of playing) {
     if (t < b.at) continue
     if (!b.started) {
+      if (waiting) continue // a mark is still being said: nothing new starts, even what is due this frame
       b.started = true
       b.start?.()
     }
     b.frame(clamp((t - b.at) / b.dur, 0, 1))
   }
-  playing = playing.filter(b => t < b.at + b.dur)
+  playing = playing.filter(b => !b.started || t < b.at + b.dur)
   raf = playing.length ? requestAnimationFrame(tick) : 0
 }
 
@@ -221,6 +266,7 @@ function fade(out: boolean): void {
 function wipe(): void {
   playing = []
   endsAt = 0
+  waiting = null
   clearTimeout(fadeTimer)
   disposeFigures()
   under.replaceChildren()
@@ -242,16 +288,19 @@ function draw(p: DrawPayload): void {
   generation++
   if (!p.append) wipe()
   clearTimeout(fadeTimer)
+  playing = playing.filter(b => !b.fades)
   fade(false)
 
   const P = (q: Point): Point => [q[0] * p.ppu, q[1] * p.ppu]
   const R = (b: Box): Rect => ({ x: b[0] * p.ppu, y: b[1] * p.ppu, w: b[2] * p.ppu, h: b[3] * p.ppu })
-  let cursor = Math.max(now(), endsAt) + 0.05
+  const start = Math.max(clock(), endsAt) + 0.05
+  let cursor = start
   for (const m of p.marks) {
     const color = (m.kind !== 'spotlight' && m.color) || p.ink
     const flat = m.kind === 'highlight' || m.kind === 'spotlight'
     const g = el('g', flat ? {} : { style: `filter: drop-shadow(0 0 5px ${color}99) drop-shadow(0 1px 1.5px rgba(0,0,0,.35))` }, m.kind === 'spotlight' ? under : over)
     cursor += m.delay ?? 0
+    const from = cursor
     let prevAt = cursor
     for (const b of beatsFor(m, g, color, P, R)) {
       const at = b.together ? prevAt : cursor
@@ -259,15 +308,19 @@ function draw(p: DrawPayload): void {
       prevAt = at
       cursor = Math.max(cursor, at + b.dur)
     }
+    if (m.say) narrate(m.say, from, cursor)
     cursor += GAP
   }
+  // Nothing narrated: read the caption out over the whole drawing instead.
+  if (p.caption && !p.marks.some(m => m.say)) narrate(p.caption, start, cursor)
   endsAt = cursor
 
   if (p.caption) {
     caption.textContent = p.caption
     caption.classList.add('show')
   }
-  if (p.fadeAfter) fadeTimer = window.setTimeout(() => clearInk(false), (cursor - now() + p.fadeAfter) * 1000)
+  const after = p.fadeAfter
+  if (after) playing.push({ at: cursor, dur: 0, fades: true, frame: () => {}, start: () => (fadeTimer = window.setTimeout(() => clearInk(false), after * 1000)) })
   if (!raf) raf = requestAnimationFrame(tick)
 }
 

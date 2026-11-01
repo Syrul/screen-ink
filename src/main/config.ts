@@ -12,7 +12,9 @@ export const MODEL = env.SCREEN_INK_MODEL || 'sonnet'
 export const ANSWER_SECONDS = 45
 // Claude Code's built-in tools the shortcut may use, all without asking. WebFetch is left out by default because
 // it can send anything on screen to any URL; add it (or Read, Grep, …) here if you want that.
-export const TOOLS = process.env.SCREEN_INK_TOOLS ?? 'WebSearch'
+export const TOOLS = env.SCREEN_INK_TOOLS ?? 'WebSearch'
+/** The narration voice: a Kokoro voice (default af_heart), `say` or `say:<macOS voice>` for macOS's own, or `off`. */
+export const VOICE = env.SCREEN_INK_VOICE || 'af_heart'
 
 export const INSTRUCTIONS = [
   "screen-ink lets you look at the user's screen and draw on it, like a friend pointing with a pen.",
@@ -21,3 +23,6 @@ export const INSTRUCTIONS = [
   'Use the fewest marks that answer, say the rest in the caption, and clear when the user is done.',
   'To explain how something works or is built, stand a figure (a small 3D model with labels and motion) on calm space beside what it explains.',
 ].join(' ')
+
+export const NARRATE =
+  "Give marks a `say` so that, spoken in order as each one starts to draw, they talk the user through the answer the way you'd talk while pointing over their shoulder. Plain spoken sentences: no markdown, symbols, coordinates or URLs read out."

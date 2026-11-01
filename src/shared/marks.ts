@@ -10,6 +10,11 @@ const color = z
   .optional()
   .describe('Hex colour like #FF5A36. Leave it out to use the ink colour.')
 const delay = z.number().min(0).max(10).optional().describe('Extra seconds to wait before this mark starts.')
+const say = z
+  .string()
+  .max(300)
+  .optional()
+  .describe('Words spoken aloud as this mark starts to draw, when the user has voice on; the next mark waits until they are said. A sentence or two of plain speech.')
 const side = z.enum(['above', 'below', 'left', 'right'])
 
 // ---- 3D figures: parts in the figure's own units (y up); the camera frames the whole figure.
@@ -60,7 +65,7 @@ const figureLabelSchema = z.object({
 })
 
 export const markSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('ring'), box, color, delay }).describe('A hand-drawn loop around a box.'),
+  z.object({ kind: z.literal('ring'), box, color, delay, say }).describe('A hand-drawn loop around a box.'),
   z
     .object({
       kind: z.literal('arrow'),
@@ -69,6 +74,7 @@ export const markSchema = z.discriminatedUnion('kind', [
       bend: z.number().min(-1).max(1).optional().describe('Curve: 0 straight, ±1 strongly bent.'),
       color,
       delay,
+      say,
     })
     .describe('An arrow whose tip touches `to`.'),
   z
@@ -80,16 +86,17 @@ export const markSchema = z.discriminatedUnion('kind', [
       side: side.optional().describe('Which side of the box or point. Default: above.'),
       color,
       delay,
+      say,
     })
     .describe('A short name in a solid pill, placed beside a box or point, never on top of it.'),
   z
-    .object({ kind: z.literal('badge'), at: point, n: z.union([z.number(), z.string().max(3)]), color, delay })
+    .object({ kind: z.literal('badge'), at: point, n: z.union([z.number(), z.string().max(3)]), color, delay, say })
     .describe('A numbered step badge centred on `at`.'),
   z
-    .object({ kind: z.literal('frame'), box, text: z.string().max(60).optional(), color, delay })
+    .object({ kind: z.literal('frame'), box, text: z.string().max(60).optional(), color, delay, say })
     .describe('A dashed frame with a faint tint around a region, with an optional title pill.'),
-  z.object({ kind: z.literal('underline'), box, color, delay }).describe('A pen line under a box (usually text).'),
-  z.object({ kind: z.literal('highlight'), box, color, delay }).describe('A translucent marker stroke over a box of text.'),
+  z.object({ kind: z.literal('underline'), box, color, delay, say }).describe('A pen line under a box (usually text).'),
+  z.object({ kind: z.literal('highlight'), box, color, delay, say }).describe('A translucent marker stroke over a box of text.'),
   z
     .object({
       kind: z.literal('text'),
@@ -98,12 +105,13 @@ export const markSchema = z.discriminatedUnion('kind', [
       size: z.number().min(8).max(64).optional().describe('Font size in points. Default 20.'),
       color,
       delay,
+      say,
     })
     .describe('Free handwritten words on calm space.'),
   z
-    .object({ kind: z.literal('line'), points: z.array(point).min(2).max(200), color, delay })
+    .object({ kind: z.literal('line'), points: z.array(point).min(2).max(200), color, delay, say })
     .describe('A freehand pen line through the points.'),
-  z.object({ kind: z.literal('spotlight'), box, delay }).describe('Dims everything except the box.'),
+  z.object({ kind: z.literal('spotlight'), box, delay, say }).describe('Dims everything except the box.'),
   z
     .object({
       kind: z.literal('figure'),
@@ -118,6 +126,7 @@ export const markSchema = z.discriminatedUnion('kind', [
       turntable: z.boolean().optional().describe('Slowly turn the whole figure so its depth reads.'),
       color: color.describe('Colour of the label pills. Parts take their own colours.'),
       delay,
+      say,
     })
     .describe('A small 3D model on a card for explaining how something works or is built: parts appear one by one, labels follow them, and motion shows how it moves.'),
 ])

@@ -1,13 +1,15 @@
 // Asks the local `claude` CLI about a screenshot, on whatever account it is signed into. --safe-mode skips the
 // user's hooks, CLAUDE.md, skills and MCP servers (fast, and nothing of theirs leaks in) but keeps their login;
 // --json-schema makes the answer arrive as a validated drawing. The built-in tools in TOOLS (web search by default)
-// stay on and are pre-approved, since nobody is there to answer a permission prompt.
+// stay on and are pre-approved, since nobody is there to answer a permission prompt. With voice on, the answer is
+// narrated too.
 import { spawn } from 'node:child_process'
 import os from 'node:os'
 import { z } from 'zod'
 import { markSchema } from '../shared/marks'
 import type { Capture } from './capture'
-import { CLAUDE, INSTRUCTIONS, MODEL, TOOLS } from './config'
+import { CLAUDE, INSTRUCTIONS, MODEL, NARRATE, TOOLS } from './config'
+import * as voice from './voice'
 
 export const answerSchema = z.object({
   caption: z.string().max(400).describe('The answer in one or two short sentences, shown at the bottom of the screen.'),
@@ -23,7 +25,7 @@ When the answer turns on facts the screen doesn't show and that may have changed
 prices, release notes, news, how a product works today), search the web first: one or two standard searches, then
 answer from what you found. Don't search for what the screenshot already tells you.`
 
-const SYSTEM = `${INSTRUCTIONS}
+const system = (narrate: boolean) => `${INSTRUCTIONS}
 You get one screenshot of the user's screen and one question. Answer by drawing on their screen: marks in the
 screenshot's coordinates, and a caption with the answer itself. Put marks on the exact thing the user needs (the
 menu, button, field or line), never on a guess: if the thing isn't visible, say in the caption where to find it and
@@ -31,7 +33,7 @@ mark the nearest step that is visible (the menu that holds it, say).
 When the question is how something works or how it is put together (an engine, a joint, a gearbox, a lock), answer
 with one figure: build it from simple parts that sit where they really would, the moving ones with motion that shows
 the mechanism, see-through housings over what's inside, and labels on the three or four parts that matter. Keep it to
-what explains the idea, not every bolt.${/\bWebSearch\b/.test(TOOLS) ? WEB : ''}`
+what explains the idea, not every bolt.${/\bWebSearch\b/.test(TOOLS) ? WEB : ''}${narrate ? `\n${NARRATE} The caption stays the short written version.` : ''}`
 
 const TIMEOUT_MS = 120_000
 
@@ -50,7 +52,7 @@ export function askClaude(question: string, shot: Capture, signal: AbortSignal, 
     '-p', '--safe-mode', '--no-session-persistence',
     '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
     '--model', MODEL, '--tools', TOOLS, ...(TOOLS ? ['--allowedTools', TOOLS] : []),
-    '--system-prompt', SYSTEM,
+    '--system-prompt', system(voice.isOn()),
     '--json-schema', JSON.stringify(ANSWER_JSON_SCHEMA),
   ]
   const message = {

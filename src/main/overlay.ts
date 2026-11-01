@@ -1,7 +1,10 @@
 // The overlay: one transparent, click-through window that sits over a whole display, above everything.
-import { BrowserWindow, type Display } from 'electron'
+import { BrowserWindow, ipcMain, type Display } from 'electron'
 import path from 'node:path'
 import type { DrawPayload } from '../shared/marks'
+import * as voice from './voice'
+
+const FIRST_WORDS_WAIT_MS = 1500 // the most a drawing waits for its first words to be ready
 
 let win: BrowserWindow | null = null
 let loaded: Promise<void> = Promise.resolve()
@@ -37,10 +40,22 @@ function overlayWindow(): BrowserWindow {
   return win
 }
 
+// The page asks for each mark's words as it draws; the answer comes once they are said.
+ipcMain.handle('ink:speak', (e, text: unknown) =>
+  win && !win.isDestroyed() && e.sender === win.webContents && typeof text === 'string' ? voice.speak(text) : undefined,
+)
+
 /** Moves the overlay over `display` and draws. */
 export async function draw(display: Display, payload: DrawPayload): Promise<void> {
   const w = overlayWindow()
-  await loaded
+  if (!payload.append) {
+    voice.stop()
+    voice.forget()
+  }
+  // Render the words ahead (the page reads the caption when no mark has any), and start once the first are ready.
+  const lines = payload.marks.flatMap(m => m.say ?? [])
+  const first = voice.prepare(lines.length ? lines : payload.caption ? [payload.caption] : [])
+  await Promise.all([loaded, Promise.race([first, new Promise(r => setTimeout(r, FIRST_WORDS_WAIT_MS))])])
   const b = display.bounds
   const cur = w.getBounds()
   if (cur.x !== b.x || cur.y !== b.y || cur.width !== b.width || cur.height !== b.height) {
@@ -53,6 +68,8 @@ export async function draw(display: Display, payload: DrawPayload): Promise<void
 }
 
 export function clear(instant = false): void {
+  voice.stop()
+  voice.forget()
   if (win && !win.isDestroyed()) win.webContents.send('ink:clear', { instant })
 }
 

@@ -9,6 +9,7 @@ import { displayUnderCursor } from './capture'
 import { ASK_SHORTCUT, CLEAR_SHORTCUT, INK, PORT } from './config'
 import { startMcp } from './mcp'
 import * as overlay from './overlay'
+import * as voice from './voice'
 
 let tray: Tray | null = null
 
@@ -50,6 +51,7 @@ app.whenReady().then(() => {
     console.error(`screen-ink: ${ASK_SHORTCUT} is taken by another app; set SCREEN_INK_HOTKEY to another shortcut.`)
   }
   globalShortcut.register(CLEAR_SHORTCUT, clearInk)
+  void voice.load()
 
   tray = new Tray(nativeImage.createEmpty())
   tray.setTitle('✎')
@@ -60,6 +62,7 @@ app.whenReady().then(() => {
       { label: 'Clear', accelerator: CLEAR_SHORTCUT, click: clearInk },
       { label: 'Draw demo', click: () => drawDemo() },
       { label: 'Draw 3D demo', click: () => drawDemo(true) },
+      { label: 'Speak answers', type: 'checkbox', checked: voice.isOn(), click: item => voice.setOn(item.checked) },
       { type: 'separator' },
       { label: `MCP on ${url}`, enabled: false },
       { label: 'Copy "claude mcp add" command', click: () => clipboard.writeText(addCommand) },
@@ -69,7 +72,7 @@ app.whenReady().then(() => {
   )
 
   console.log(`screen-ink: MCP on ${url}, ask with ${ASK_SHORTCUT}\nAdd it to Claude Code with:\n  ${addCommand}`)
-  if (process.env.SCREEN_INK_DEMO) drawDemo(process.env.SCREEN_INK_DEMO === '3d')
+  if (process.env.SCREEN_INK_DEMO) void voice.load().then(() => drawDemo(process.env.SCREEN_INK_DEMO === '3d'))
 })
 
 app.on('will-quit', () => globalShortcut.unregisterAll())

@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { drawShape } from '../shared/marks'
 import * as canvas from './canvas'
 import { capture, displayUnderCursor, screenAccess } from './capture'
-import { INSTRUCTIONS } from './config'
+import { INSTRUCTIONS, NARRATE } from './config'
 import * as overlay from './overlay'
 
 export interface InkOptions {
@@ -18,7 +18,7 @@ export interface InkOptions {
 const text = (t: string, isError = false) => ({ content: [{ type: 'text' as const, text: t }], isError })
 
 function buildServer(): McpServer {
-  const server = new McpServer({ name: 'screen-ink', version: '0.1.0' }, { instructions: INSTRUCTIONS })
+  const server = new McpServer({ name: 'screen-ink', version: '0.1.0' }, { instructions: `${INSTRUCTIONS} ${NARRATE}` })
 
   server.registerTool(
     'screenshot',

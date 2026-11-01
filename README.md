@@ -2,8 +2,8 @@
 
 A menu-bar app that lets any MCP agent (Claude Code, Codex, …) look at your screen and draw on it: rings,
 arrows, name pills, step badges, dashed frames, highlights and handwriting, animated like a pen, plus small
-3D figures that build part by part and move, in a transparent click-through overlay. Or press **⌥⇧Space**, ask a question, and your local `claude` CLI answers
-by drawing. Either way it runs on whatever subscription the CLI is signed into.
+3D figures that build part by part and move, in a transparent click-through overlay, talking you through it
+out loud as it draws. Or press **⌥⇧Space**, ask a question, and your local `claude` CLI answers by drawing. Either way it runs on whatever subscription the CLI is signed into.
 
 ```
 agent ──MCP (HTTP, 127.0.0.1:7377)──▶ screen-ink main ──IPC──▶ overlay window (SVG + perfect-freehand, three.js)
@@ -24,7 +24,7 @@ npm start
 
 A ✎ appears in the menu bar. Its menu has **Ask about the screen…** (⌥⇧Space anywhere), **Clear** (⌃⌥⎋
 anywhere), **Draw demo** and **Draw 3D demo** (samples drawn over your screen without needing any
-permission), and **Copy "claude mcp add" command**.
+permission), **Speak answers** (voice on or off), and **Copy "claude mcp add" command**.
 
 ## Ask with the shortcut
 
@@ -49,6 +49,24 @@ shortcut again does the same.
 The first `screenshot` asks macOS for Screen Recording access. In development the permission belongs to
 **Electron**. Turn it on in System Settings → Privacy & Security → Screen & System Audio Recording, then
 restart `npm start`.
+
+## Voice
+
+Every mark can carry a `say`: words spoken aloud as the mark starts to draw. The drawing waits at the end of
+each mark until its words are out, so the pen keeps pace with the voice. With voice on, the shortcut asks
+Claude to narrate its answer this way, and MCP agents are told about `say` too. A drawing with no `say` at
+all has its caption read out instead. Clearing the screen or starting a new drawing cuts the voice off.
+
+The voice is [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), an open 82M-parameter speech model
+(Apache 2.0), run on the CPU through [kokoro-js](https://www.npmjs.com/package/kokoro-js), so nothing leaves
+your Mac. (The Claude app's own voices aren't reachable from the CLI.) The first launch downloads the model,
+about 330 MB, into `~/Library/Application Support/screen-ink/models`; until it's ready, or if it fails to
+load, macOS's `say` speaks instead. When a drawing arrives, its lines are rendered in order before their
+marks come up (about half a second each on an M4 Max), so each mark's voice starts with its pen.
+
+`SCREEN_INK_VOICE` picks a Kokoro voice (default `af_heart`; 54 in all, such as `af_bella`, `am_adam`,
+`bf_emma` and `bm_george`, listed in [kokoro-js](https://www.npmjs.com/package/kokoro-js)), or `say` (or
+`say:Ava`) for a macOS voice.
 
 ## Connect an agent
 
@@ -98,7 +116,7 @@ Marks (coordinates in screenshot units; `box` is `[x, y, w, h]`, points are `[x,
 | `spotlight` | `box`: dims everything else |
 | `figure` | `box`, `title`, `parts`, `labels`, `view`, `turntable`: a 3D model on a card (below) |
 
-Every mark but `spotlight` takes `color` and `delay`. The schema lives in
+Every mark takes `say` and `delay`, and every mark but `spotlight` takes `color`. The schema lives in
 [src/shared/marks.ts](src/shared/marks.ts) and is what the agent sees.
 
 ### 3D figures
@@ -123,7 +141,8 @@ It draws with three.js: toon shading, inked creases and a drawn outline, so it m
   (ink hex, default `#FF5A36`), `SCREEN_INK_HOTKEY` (default `Alt+Shift+Space`, an
   [Electron accelerator](https://www.electronjs.org/docs/latest/api/accelerator)), `SCREEN_INK_MODEL`
   (default `sonnet`), `SCREEN_INK_CLAUDE` (path to `claude` when it isn't on `PATH`, as when launched from
-  Finder), `SCREEN_INK_TOOLS` (Claude Code tools the shortcut may use, default `WebSearch`),
+  Finder), `SCREEN_INK_TOOLS` (Claude Code tools the shortcut may use, default `WebSearch`), `SCREEN_INK_VOICE`
+  (a Kokoro voice, default `af_heart`; `say` or `say:<macOS voice>`; or `off` to start with voice off),
   `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
 
 | File | Role |
@@ -135,6 +154,7 @@ It draws with three.js: toon shading, inked creases and a drawn outline, so it m
 | [src/main/canvas.ts](src/main/canvas.ts) | The last screenshot's coordinate space, shared by MCP and the shortcut |
 | [src/main/capture.ts](src/main/capture.ts) | Screenshots and the unit → point scale |
 | [src/main/overlay.ts](src/main/overlay.ts) | The transparent, click-through window |
+| [src/main/voice.ts](src/main/voice.ts) | Speaks each mark's words with Kokoro, or `say` until it's ready |
 | [src/renderer/renderer.ts](src/renderer/renderer.ts) | Marks → animated beats |
 | [src/renderer/shapes.ts](src/renderer/shapes.ts) | Hand-drawn geometry |
 | [src/renderer/figure.ts](src/renderer/figure.ts) | 3D figures: parts, motion, framing, labels |
@@ -155,7 +175,8 @@ so keep it private.
    instead of `[x, y]`.
 2. **Faster answers.** Stream the answer (`--include-partial-messages`) and draw each mark as soon as it
    is complete, instead of waiting for the whole JSON.
-3. **Voice.** Push-to-talk on the shortcut, and speak each step (AVSpeechSynthesizer) while its strokes draw.
+3. **Push-to-talk.** Hold the shortcut and ask out loud, instead of typing (macOS Dictation works in the bar
+   today).
 4. **Truer mechanisms.** Figures are only as right as the model's mechanics: it can still spin a gear the
    wrong way or misplace a part. Constraints (mesh these two gears, join this rod to that crank) would let
    screen-ink work out positions and speeds itself.
