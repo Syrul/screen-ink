@@ -5,10 +5,13 @@
 //   → {"id": 1, "trusted": true, "app": "Safari", "ax": [{"role", "subrole", "label", "frame"}], "ocr": [{"text", "box", "confidence"}]}
 //
 //   {"id": 2, "type": "text"} → {"id": 2, "trusted": true}   types the text into the app in front
-//   {"id": 3, "watch": true}   → {"id": 3, "trusted": true, "watching": true}, then {"click": [x, y]} per click
+//   {"id": 3, "watch": true}   → {"id": 3, "trusted": true, "watching": true}, then {"click": [x, y]} per click and
+//                                 {"scroll": [x, y]} while the user scrolls (a few a second at most)
 //   {"id": 4, "press": [x, y], "dry": true}
 //     → {"id": 4, "trusted": true, "target": {"role", "subrole", "label", "how"}} or {..., "refused": "why"}
 //     presses what the app in front has there (how: press, focus or click), or with dry only says what it would press
+//   {"id": 5, "scroll": [x, y], "dx": 0, "dy": -600} → {"id": 5, "trusted": true}
+//     scrolls whatever is at that spot by dy points down (negative) or up, and dx right (negative) or left
 //
 // `ax` is the frontmost app's controls (its menu bar and the windows on that display) from the Accessibility API,
 // with frames in global screen points, top-left origin (Electron's coordinates). `ocr` is every line of text Vision
@@ -309,9 +312,29 @@ func press(_ p: CGPoint, dry: Bool) -> [String: Any] {
   return ["target": target]
 }
 
+// ---- Scrolling, for a walkthrough step or an agent: smooth, in points, at a spot, the pointer put back after
+
+func scroll(_ p: CGPoint, dx: Double, dy: Double) {
+  let back = CGEvent(source: nil)?.location // a scroll at a spot takes the pointer there: it goes back after
+  let steps = max(1, min(24, Int(max(abs(dx), abs(dy)) / 40)))
+  for i in 0..<steps {
+    // Even steps, with what rounding left over going in the last.
+    let x = Int32(dx / Double(steps)), y = Int32(dy / Double(steps))
+    let last = i == steps - 1
+    let ex = last ? Int32(dx) - x * Int32(steps - 1) : x, ey = last ? Int32(dy) - y * Int32(steps - 1) : y
+    guard let e = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: ey, wheel2: ex, wheel3: 0) else { continue }
+    e.location = p
+    e.post(tap: .cghidEventTap)
+    usleep(12_000)
+  }
+  if let back { CGWarpMouseCursorPosition(back) }
+  CGAssociateMouseAndMouseCursorPosition(1)
+}
+
 // ---- Watching clicks, for walkthroughs: each left click anywhere, in global points, top-left origin.
 
 var clicks: CFMachPort?
+var lastScroll = Date.distantPast
 
 func watch(_ on: Bool) -> Bool {
   if !on {
@@ -322,7 +345,7 @@ func watch(_ on: Bool) -> Bool {
     CGEvent.tapEnable(tap: tap, enable: true)
     return true
   }
-  let mask = CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
+  let mask = CGEventMask(1 << CGEventType.leftMouseDown.rawValue) | CGEventMask(1 << CGEventType.scrollWheel.rawValue)
   guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly, eventsOfInterest: mask,
                                     callback: { _, kind, event, _ in
     if kind == .tapDisabledByTimeout || kind == .tapDisabledByUserInput {
@@ -330,6 +353,10 @@ func watch(_ on: Bool) -> Bool {
     } else if kind == .leftMouseDown {
       let p = event.location
       print("{\"click\": [\(p.x), \(p.y)]}")
+    } else if kind == .scrollWheel, Date().timeIntervalSince(lastScroll) > 0.15 {
+      lastScroll = Date()
+      let p = event.location
+      print("{\"scroll\": [\(p.x), \(p.y)]}")
     }
     return Unmanaged.passUnretained(event)
   }, userInfo: nil) else { return false }
@@ -350,6 +377,10 @@ func answer(_ request: [String: Any]) -> [String: Any] {
   if let at = request["press"] as? [Double], at.count == 2 {
     if !AXIsProcessTrusted() { return reply }
     return reply.merging(press(CGPoint(x: at[0], y: at[1]), dry: request["dry"] as? Bool ?? false)) { a, _ in a }
+  }
+  if let at = request["scroll"] as? [Double], at.count == 2 {
+    if AXIsProcessTrusted() { scroll(CGPoint(x: at[0], y: at[1]), dx: request["dx"] as? Double ?? 0, dy: request["dy"] as? Double ?? 0) }
+    return reply
   }
   if let on = request["watch"] as? Bool {
     reply["watching"] = DispatchQueue.main.sync { watch(on) }

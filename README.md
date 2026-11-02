@@ -99,14 +99,17 @@ Claude shows only the first step and names what to click. screen-ink watches for
 to left clicks while a step is up; it needs Accessibility), waits a moment for the menu or pane it opens, takes a
 fresh screenshot and asks for the next step, until Claude says it's done. A step nobody clicks goes after five
 minutes; the shortcut or ⌃⌥Esc stops the walk. Without Accessibility the first step is drawn as usual, and asking
-again carries on.
+again carries on. When what you need is out of view, further down a web page or a long list, the step is a scroll
+instead: Claude draws which way, screen-ink waits for you to scroll and stop, then looks again and shows the next
+step.
 
 **Do it for me.** Each walkthrough step has a *Do it for me* button. Click it and screen-ink does the steps
 itself: each is drawn and said first, held for at least a second, then its pointer (below) moves there and shows the
 press, named, and the control is pressed through the Accessibility API (its own press action, so your mouse doesn't
 move), and the next step follows without waiting. Fields are
 focused rather than pressed; where the app has no press action there (most web pages), it clicks the spot like a
-mouse and puts the pointer back. It never presses a password field, and it leaves a step to you when the answer marks
+mouse and puts the pointer back. A scroll step is scrolled for you, smoothly, at the page or list it names, again
+putting your pointer back. It never presses a password field, and it leaves a step to you when the answer marks
 it final (it sends, buys, deletes, signs in, installs or grants access) or when the button, menu item, link or
 checkbox says so (Send, Buy, Delete, Confirm, Install, Allow, OK and the like): the caption says *This one is yours*,
 and once you click it the next step offers the button again. *Stop*, the shortcut or ⌃⌥Esc hand the clicking back.
@@ -166,7 +169,7 @@ list.
 A second pointer, in the ink's colour, does the pointing. When a drawing starts it leaves your mouse and moves to
 each mark as the pen draws it, in a gentle arc: over a target the way a hand hovers, to the end of an arrow or a
 stroke, beside a card rather than on it. A walkthrough step leaves it resting on what to click, and *Do it for me*
-shows each press with it: the pointer dips, a ring spreads from its tip, and a tag says what it is pressing. It is
+shows each press and scroll with it: the pointer dips, a ring spreads from its tip, and a tag says what it is pressing. It is
 only drawn, so your own mouse stays yours. **Show screen-ink's pointer** in Settings (or `SCREEN_INK_CURSOR=off`)
 turns it off.
 
@@ -245,6 +248,7 @@ bike's gearing work?"* for a 3D figure.
 | --- | --- |
 | `screenshot` | Screenshot of the display under the mouse (or the main one), without screen-ink's own marks, plus the numbered list of elements on it. Fixes the coordinate space and the ids for `draw`. |
 | `draw` | Draws `marks` in order, plus an optional `caption`. Replaces the current drawing unless `append`; `fadeAfter` seconds makes it fade away. A mark with an `id` can be changed later: with `append`, a mark with the same id replaces it, and `remove` takes marks away by id. |
+| `scroll` | Scrolls the page, list or panel at a spot (`at`, a box or element id; default the middle) `direction` by `by` units (default most of the screen), on the last screenshot's display, then clears the drawing: take a new screenshot to see it. Needs Accessibility. |
 | `progress` | A checklist in the corner of the screen (`title`, `steps` with `todo`, `doing`, `done` or `failed`), for keeping the user posted on a task. Needs no screenshot, sits over the rest of the drawing, and fades 20 seconds after every step is done or failed. |
 | `save_lesson` | Keeps the last drawing, with what was appended to it, as a lesson (optional `title`). |
 | `lessons` | Lists the saved lessons. |
@@ -401,7 +405,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/main/canvas.ts](src/main/canvas.ts) | The last screenshot's coordinate space, shared by MCP and the shortcut |
 | [src/main/capture.ts](src/main/capture.ts) | Screenshots and the unit → point scale |
 | [src/main/sense.ts](src/main/sense.ts) | Runs the helper, merges its controls and text into the element list, places marks that name ids |
-| [native/sense.swift](native/sense.swift) | The helper: Accessibility walk, Vision OCR, splitting lines by their ink; typing for buttons, watching clicks for walkthroughs, pressing steps for "Do it for me" |
+| [native/sense.swift](native/sense.swift) | The helper: Accessibility walk, Vision OCR, splitting lines by their ink; typing for buttons, watching clicks and scrolls for walkthroughs, pressing and scrolling for "Do it for me" and agents |
 | [src/main/photos.ts](src/main/photos.ts) | Fetches photo marks' images, from allowed hosts only |
 | [src/main/overlay.ts](src/main/overlay.ts) | The transparent, click-through window |
 | [src/main/voice.ts](src/main/voice.ts) | Speaks each mark's words with Kokoro, or `say` until it's ready |

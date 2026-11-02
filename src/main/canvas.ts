@@ -1,7 +1,7 @@
 // The canvas: the last screenshot fixes the display, coordinate space and element list that drawings use, whether
 // they come from an MCP agent or from the shortcut.
 import { screen, type Display } from 'electron'
-import type { DrawPayload, Mark, MarkInput } from '../shared/marks'
+import type { Box, DrawPayload, Mark, MarkInput, Point } from '../shared/marks'
 import { displayUnderCursor, type Capture } from './capture'
 import * as lessons from './lessons'
 import * as overlay from './overlay'
@@ -9,10 +9,29 @@ import { fetchPhoto } from './photos'
 import { place, type Element } from './sense'
 import * as settings from './settings'
 
-let last: { displayId: number; width: number; elements: Promise<Element[]> } | null = null
+let last: { displayId: number; width: number; height: number; elements: Promise<Element[]> } | null = null
 
 export function remember(shot: Capture): void {
-  last = { displayId: shot.display.id, width: shot.width, elements: shot.elements }
+  last = { displayId: shot.display.id, width: shot.width, height: shot.height, elements: shot.elements }
+}
+
+/** The last screenshot's display, and its size in units, or why there is none. */
+function lastDisplay(): { d: Display; width: number; height: number; ppu: number } {
+  if (!last) throw new Error('Call screenshot first: it fixes the coordinates.')
+  const d = screen.getAllDisplays().find(x => x.id === last!.displayId)
+  if (!d) throw new Error('The display from the last screenshot is gone. Take a new screenshot.')
+  return { d, width: last.width, height: last.height, ppu: d.size.width / last.width }
+}
+
+/**
+ * The middle of `at` (a box in the last screenshot's units, or one of its element ids), or of the screen, in global
+ * points; with the display and its points per unit.
+ */
+export async function spot(at?: Box | string): Promise<{ display: Display; point: Point; ppu: number; size: [number, number] }> {
+  const { d, width, height, ppu } = lastDisplay()
+  const box = at === undefined ? ([0, 0, width, height] as Box) : typeof at === 'string' ? (await last!.elements).find(e => e.id === at)?.box : at
+  if (!box) throw new Error(`The last screenshot has no element ${at}. Take a new screenshot and use its ids.`)
+  return { display: d, point: [d.bounds.x + (box[0] + box[2] / 2) * ppu, d.bounds.y + (box[1] + box[3] / 2) * ppu], ppu, size: [width, height] }
 }
 
 export type Drawing = Omit<DrawPayload, 'ppu' | 'ink' | 'marks'> & { marks: MarkInput[] }
@@ -22,11 +41,8 @@ export type Drawing = Omit<DrawPayload, 'ppu' | 'ink' | 'marks'> & { marks: Mark
  * out, as are photos that couldn't be fetched (`failed` says why).
  */
 export async function draw(args: Drawing): Promise<{ display: Display; drawn: number; missing: string[]; failed: string[] }> {
-  if (!last) throw new Error('Call screenshot first: draw uses its coordinates.')
-  const d = screen.getAllDisplays().find(x => x.id === last!.displayId)
-  if (!d) throw new Error('The display from the last screenshot is gone. Take a new screenshot.')
-  const ppu = d.size.width / last.width
-  const { marks: placed, missing } = place(args.marks, await last.elements, ppu)
+  const { d, ppu } = lastDisplay()
+  const { marks: placed, missing } = place(args.marks, await last!.elements, ppu)
   if (args.marks.length && !placed.length) throw new Error(`The last screenshot has no element ${missing.join(', ')}. Take a new screenshot and use its ids.`)
   const failed: string[] = []
   const marks = (

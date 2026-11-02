@@ -5,6 +5,13 @@ import type { Capture } from './capture'
 import { INSTRUCTIONS, NARRATE } from './config'
 import * as memory from './memory'
 
+export const scrollSchema = z.object({
+  direction: z.enum(['down', 'up', 'right', 'left']),
+  by: z.number().min(20).max(5000).optional().describe('How far the content moves, in screenshot units. Default: most of the screen.'),
+  at: target.optional().describe('What to scroll (the page, list or panel), as a box or element id. Default: the middle of the screen.'),
+})
+export type Scroll = z.infer<typeof scrollSchema>
+
 export const answerSchema = z.object({
   caption: z.string().max(400).describe('The answer in one or two short sentences, shown at the bottom of the screen.'),
   marks: z.array(markSchema).max(20).describe('Marks that point at what the caption talks about, drawn in order. Empty when nothing on screen helps.'),
@@ -13,6 +20,12 @@ export const answerSchema = z.object({
     .describe(
       'In a walkthrough, what the user clicks to finish the step you are showing. screen-ink waits for that click, then shows you ' +
         'the screen again for the next step. Leave it out on the last step, and when the answer is not a walkthrough.',
+    ),
+  scroll: scrollSchema
+    .optional()
+    .describe(
+      'In a walkthrough, when what the user needs is out of view (further down a web page, in a long list): scroll there ' +
+        'instead of giving next. screen-ink waits for the user to scroll, or scrolls for them, then shows you the screen again.',
     ),
   final: z
     .boolean()
@@ -56,6 +69,9 @@ const WALKTHROUGH = `
 When the task takes several clicks (changing a setting, finding a menu), walk the user through it: show only the first
 step, the one thing to click, and set next to it. Once they click it you get the screen as it is then: show the next
 step the same way, and leave next out when the task is done. Say in the caption what the step does, briefly.
+When what they need is out of view (further down a web page or a long list), make the step a scroll instead: set
+scroll (which way, about how far, and what to scroll), leave out next, draw an arrow the way it goes, and say what is
+down there. You get the screen again once it has scrolled.
 The user may let screen-ink click the steps for them: then you're told it pressed the step, and the steps go by
 without waiting, so keep each one short. Set final on a step whose click can't be taken back (it sends, buys,
 deletes, signs in, installs or grants access): screen-ink leaves that click to the user.`

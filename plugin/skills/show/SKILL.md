@@ -25,6 +25,8 @@ Pick the fewest marks that answer:
   other and `steps` that walk through it.
 
 For a task of several clicks, draw one step, wait for the user to do it, take a new screenshot, and draw the next.
+When what you need is out of view (further down a web page, in a long list), `scroll` brings it in; then take a new
+screenshot before drawing.
 Give a mark an `id` to change it later with `append` (same id replaces it) or `remove`. Call `clear` when done.
 
 While you work on something the user is waiting for, keep them posted with `progress`: a checklist in the corner

@@ -26,7 +26,7 @@ declare global {
       ask(question: string): void
       save(name: string, usdz: Uint8Array): Promise<string | null>
       act(what: Act, value: string, folder?: string): Promise<Outcome>
-      onPoint(cb: (p: { id: number; at: Point; press?: boolean; label?: string }) => void): void
+      onPoint(cb: (p: { id: number; at: Point; press?: boolean; label?: string; scroll?: 'down' | 'up' | 'right' | 'left' }) => void): void
       pointed(id: number): void
     }
   }
@@ -475,7 +475,7 @@ if (window.inkBridge) {
   window.inkBridge.onClear(o => clearInk(o.instant))
   window.inkBridge.onSaying(s => showSaying(s.text, s.seconds))
   window.inkBridge.onPoint(async p => {
-    await (p.press ? pointer.press(p.at, p.label) : pointer.glide(p.at))
+    await (p.press ? pointer.press(p.at, p.label) : p.scroll ? pointer.scroll(p.at, p.scroll) : pointer.glide(p.at))
     window.inkBridge!.pointed(p.id)
   })
   document.addEventListener('mousemove', trackPointer)
@@ -494,11 +494,12 @@ if (window.inkBridge) {
     run()
   }
   // For trying a drawing out from the console: drawPreview(marks, caption, { append, remove, … }), and the pointer's
-  // press: pressPreview([x, y], 'View').
+  // press and scroll: pressPreview([x, y], 'View'), scrollPreview([x, y], 'down').
   Object.assign(window, {
     drawPreview: (marks: Mark[], text?: string, more: Partial<DrawPayload> = {}) =>
       draw({ marks, caption: text, ppu: innerWidth / DEMO_SIZE.width, ink: '#FF5A36', ...more }),
     pressPreview: (at: Point, label?: string) => pointer.press(at, label),
+    scrollPreview: (at: Point, direction: 'down' | 'up' | 'right' | 'left' = 'down') => pointer.scroll(at, direction),
   })
   addEventListener('resize', run)
   addEventListener('keydown', e => (e.key === 'r' ? run() : e.key === '3' ? pick(true)() : e.key === '2' ? pick(false)() : null))

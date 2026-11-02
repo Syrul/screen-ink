@@ -100,6 +100,23 @@ export async function press(to: Point, label?: string): Promise<void> {
   seen = performance.now()
 }
 
+/** Moves to `to` and shows a scroll: the pointer nudges the way the page goes, twice, saying so. */
+export async function scroll(to: Point, direction: 'down' | 'up' | 'right' | 'left'): Promise<void> {
+  if (!on) return
+  tag.textContent = `Scrolling ${direction}`
+  node.classList.add('pressing')
+  await glide(to, 1.15)
+  const [x, y] = { down: [0, 7], up: [0, -7], right: [7, 0], left: [-7, 0] }[direction]
+  const still = 'translate(0, 0)'
+  const nudged = `translate(${x}px, ${y}px)`
+  await body.animate([{ transform: still }, { transform: nudged }, { transform: still }, { transform: nudged }, { transform: still }], {
+    duration: 520,
+    easing: 'ease-in-out',
+  }).finished
+  setTimeout(() => node.classList.remove('pressing'), 900)
+  seen = performance.now()
+}
+
 export function hide(instant = false): void {
   if (!node.classList.contains('show')) return
   if (instant) moving?.cancel()

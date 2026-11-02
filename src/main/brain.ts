@@ -255,7 +255,7 @@ export async function ask(question: string, shot: Capture, signal: AbortSignal, 
       `Checking your figure found: ${problems.join(' ')} Answer again with the caption and the marks from that figure on, fixed.`,
       listener,
     )
-    return kept({ ...fixed, caption: fixed.caption || first.caption, marks: [...before, ...fixed.marks], next: fixed.next ?? first.next, final: fixed.final ?? first.final, remember: fixed.remember ?? first.remember })
+    return kept({ ...fixed, caption: fixed.caption || first.caption, marks: [...before, ...fixed.marks], next: fixed.next ?? first.next, scroll: fixed.scroll ?? first.scroll, final: fixed.final ?? first.final, remember: fixed.remember ?? first.remember })
   } finally {
     signal.removeEventListener('abort', stop)
   }

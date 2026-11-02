@@ -32,6 +32,7 @@ let helper: ChildProcess | null = null
 let lastId = 0
 const waiting = new Map<number, (reply: Reply | null) => void>()
 const clickers = new Set<(at: Point) => void>()
+const scrollers = new Set<(at: Point) => void>()
 let asked = false
 
 /** Starts the helper, early: it learns which app is in front by watching the user switch apps. */
@@ -45,8 +46,9 @@ export function start(): void {
     } catch {
       return
     }
-    const click = (reply as { click?: Point }).click
+    const { click, scroll } = reply as { click?: Point; scroll?: Point }
     if (click) for (const fn of clickers) fn(click)
+    if (scroll) for (const fn of scrollers) fn(scroll)
     waiting.get(reply.id)?.(reply)
     waiting.delete(reply.id)
   })
@@ -121,17 +123,33 @@ export async function press(at: Point, dry = false): Promise<{ target?: Target; 
 }
 
 /**
+ * Scrolls whatever is at `at` (global points, top-left origin) `points` towards `direction`, without moving the
+ * user's pointer for good. Resolves whether it could. Needs Accessibility.
+ */
+export async function scroll(at: Point, direction: 'down' | 'up' | 'right' | 'left', points: number): Promise<boolean> {
+  const [dx, dy] = { down: [0, -points], up: [0, points], right: [-points, 0], left: [points, 0] }[direction]
+  const reply = await request({ scroll: at, dx, dy }, 5000)
+  askForAccess(reply)
+  return !!reply?.trusted
+}
+
+/**
  * Calls `fn` with every left click anywhere (global points, top-left origin) until the returned function is called.
  * Resolves null when clicks can't be watched (no helper, or no Accessibility access).
  */
-export async function watchClicks(fn: (at: Point) => void): Promise<(() => void) | null> {
+export const watchClicks = (fn: (at: Point) => void) => watch(clickers, fn)
+
+/** The same for the user's scrolling, a few times a second while it goes on. */
+export const watchScrolls = (fn: (at: Point) => void) => watch(scrollers, fn)
+
+async function watch(set: Set<(at: Point) => void>, fn: (at: Point) => void): Promise<(() => void) | null> {
   const reply = (await request({ watch: true })) as (Reply & { watching?: boolean }) | null
   askForAccess(reply)
   if (!reply?.watching) return null
-  clickers.add(fn)
+  set.add(fn)
   return () => {
-    clickers.delete(fn)
-    if (!clickers.size) void request({ watch: false })
+    set.delete(fn)
+    if (!clickers.size && !scrollers.size) void request({ watch: false })
   }
 }
 

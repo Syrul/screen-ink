@@ -5,12 +5,14 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { screen } from 'electron'
 import { z } from 'zod'
 import { checkMarks } from '../shared/check'
-import { drawShape } from '../shared/marks'
+import { drawShape, type Box } from '../shared/marks'
 import * as canvas from './canvas'
 import { capture, displayUnderCursor, screenAccess } from './capture'
+import { scrollSchema } from './answer'
 import { INSTRUCTIONS, NARRATE } from './config'
 import * as lessons from './lessons'
 import * as overlay from './overlay'
+import * as sense from './sense'
 import { describe } from './sense'
 
 export interface InkOptions {
@@ -87,6 +89,32 @@ function buildServer(): McpServer {
       const check = problems.length ? `\nThe figure won't work as meant: ${problems.join(' ')} Fix it and draw it again.` : ''
       const photos = failed.length ? ` Left out ${failed.length} photo${failed.length === 1 ? '' : 's'}: ${failed.join('; ')}` : ''
       return text(`Drew ${n} mark${n === 1 ? '' : 's'} on display ${d.id}${fade}.${skipped}${photos}${check}`)
+    },
+  )
+
+  server.registerTool(
+    'scroll',
+    {
+      title: 'Scroll',
+      description:
+        'Scrolls the page, list or panel at a spot on the display from the last screenshot, to bring what is out of view into it ' +
+        '(further down a web page, say). It clears the drawing, which no longer lines up; take a new screenshot to see the result. ' +
+        "screen-ink's pointer shows the scroll. Needs Accessibility.",
+      inputSchema: scrollSchema.shape,
+    },
+    async ({ direction, by, at }) => {
+      try {
+        const { display, point, ppu, size } = await canvas.spot(at as Box | string | undefined)
+        const vertical = direction === 'down' || direction === 'up'
+        await overlay.point([point[0] - display.bounds.x, point[1] - display.bounds.y], { scroll: direction })
+        if (!(await sense.scroll(point, direction, (by ?? 0.7 * (vertical ? size[1] : size[0])) * ppu))) {
+          return text('Scrolling needs Accessibility for screen-ink: System Settings → Privacy & Security → Accessibility.', true)
+        }
+        overlay.clear(true)
+        return text(`Scrolled ${direction}. Take a new screenshot to see where it landed.`)
+      } catch (e) {
+        return text((e as Error).message, true)
+      }
     },
   )
 

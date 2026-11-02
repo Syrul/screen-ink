@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { markSchema, type MarkInput } from '../shared/marks'
-import { ANSWER_JSON_SCHEMA, answerSchema, FOLLOW_UP_MS, system, TIMEOUT_MS, type Answer, type Engine, type Listener } from './answer'
+import { ANSWER_JSON_SCHEMA, answerSchema, FOLLOW_UP_MS, scrollSchema, system, TIMEOUT_MS, type Answer, type Engine, type Listener } from './answer'
 import type { Capture } from './capture'
 import * as settings from './settings'
 
@@ -156,7 +156,7 @@ export class Codex implements Engine {
 /** The answer in Codex's reply, keeping the marks that fit; or why there is none. */
 function parse(reply: string): Answer | string {
   const text = reply.replace(/^```(?:json)?\s*|\s*```$/g, '')
-  let raw: { caption?: unknown; marks?: unknown; next?: unknown; final?: unknown; remember?: unknown }
+  let raw: { caption?: unknown; marks?: unknown; next?: unknown; scroll?: unknown; final?: unknown; remember?: unknown }
   try {
     raw = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1))
   } catch {
@@ -169,6 +169,14 @@ function parse(reply: string): Answer | string {
   })
   const next = answerSchema.shape.next.safeParse(raw.next ?? undefined)
   const remember = typeof raw.remember === 'string' ? raw.remember.slice(0, 200) : undefined
+  const scroll = scrollSchema.safeParse(raw.scroll)
   const final = raw.final === true ? true : undefined
-  return { caption: raw.caption.slice(0, 400), marks: marks.slice(0, 20), next: next.success ? next.data : undefined, final, remember }
+  return {
+    caption: raw.caption.slice(0, 400),
+    marks: marks.slice(0, 20),
+    next: next.success ? next.data : undefined,
+    scroll: scroll.success ? scroll.data : undefined,
+    final,
+    remember,
+  }
 }

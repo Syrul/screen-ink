@@ -10,6 +10,7 @@ import { BrowserWindow, ipcMain, systemPreferences } from 'electron'
 import path from 'node:path'
 import { words } from '../shared/caption'
 import type { Box, MarkInput, Point } from '../shared/marks'
+import type { Scroll } from './answer'
 import * as brain from './brain'
 import * as canvas from './canvas'
 import { capture, displayUnderCursor, type Capture } from './capture'
@@ -33,6 +34,8 @@ const SETTLE_MS = 700 // after the click, for the menu or pane it opens to appea
 const CLICK_SLOP_PT = 8 // a click this close to the target counts
 const SHOW_MS = 1200 // the least a step screen-ink does stays up before it is pressed, so the user sees what
 const SAID_MS = 10_000 // the most a step waits for its words to be said before it is pressed
+const SCROLL_SHARE = 0.7 // how much of the screen a scroll moves, when the answer doesn't say
+const SCROLLED_MS = 700 // the user's scrolling is over once it has stopped this long
 // Words on a button, menu item, link or checkbox that mean the user decides, whatever the answer says. Rows, tabs,
 // menu titles and fields only lead somewhere, so their words don't count.
 const LEADS = new Set(['AXRow', 'AXOutlineRow', 'AXCell', 'AXTab', 'AXStaticText', 'AXHeading', 'AXImage', 'AXMenuBarItem', 'AXDisclosureTriangle'])
@@ -163,124 +166,143 @@ export function stop(): void {
 /** Asks Claude and draws the answer as it is written, then walks through the steps that follow it, if any. */
 async function answer(question: string, shot: Capture, keep: boolean): Promise<void> {
   const abort = (running = latest = new AbortController())
-  let { next, final } = await reply(question, shot, keep, abort)
+  let step = await reply(question, shot, keep, abort)
   running = null
   try {
-    for (let step = 1; next !== undefined && step <= WALK_STEPS && !abort.signal.aborted; step++) {
+    for (let n = 1; walks(step) && n <= WALK_STEPS && !abort.signal.aborted; n++) {
       brain.warm() // keep the conversation while the user finds the click
-      let where: Click = null
-      let pressed = false
+      let done: Done = null
       while (!abort.signal.aborted) {
         if (doing === abort) {
-          const done = await pressFor(next, final, shot, abort)
-          if (typeof done === 'object') {
-            ;[where, pressed] = [done, true]
+          const did = step.scroll ? await scrollFor(step.scroll, shot, abort) : await pressFor(step.next!, step.final, shot, abort)
+          if (typeof did === 'object') {
+            done = did
             break
           }
-          // Refused, or the user pressed Stop: either way the click is theirs, and the Stop button goes.
+          // Refused, or the user pressed Stop: either way the step is theirs, and the Stop button goes.
           const refused = doing === abort
           doing = null
           queue(abort, {
             marks: [],
             remove: ['walk'],
             append: true,
-            ...(refused ? { caption: `This one is yours: ${done}. Click it when you're ready.`, speakCaption: true } : { speakCaption: false }),
+            ...(refused ? { caption: `This one is yours: ${did}. Click it when you're ready.`, speakCaption: true } : { speakCaption: false }),
           })
-        } else if (offers() && !final) {
-          queue(abort, { marks: [await walkButton('Do it for me', 'start', next, shot)], append: true, speakCaption: false })
+        } else if (offers() && !step.final) {
+          queue(abort, { marks: [await walkButton('Do it for me', 'start', step, shot)], append: true, speakCaption: false })
         }
-        where = await clicked(next, shot, abort.signal)
-        if (where !== 'auto') break
+        done = step.scroll ? await scrolled(abort.signal) : await clicked(step.next!, shot, abort.signal)
+        if (done !== 'auto') break
         doing = abort
-        queue(abort, { marks: [await walkButton('Stop', 'stop', next, shot)], append: true, speakCaption: false })
+        queue(abort, { marks: [await walkButton('Stop', 'stop', step, shot)], append: true, speakCaption: false })
       }
-      // A step nobody clicked goes after a while; one whose click can't be seen stays as long as an answer does.
-      if (where === 'timeout') overlay.clear()
-      if (where === 'blind') setTimeout(() => latest === abort && !abort.signal.aborted && overlay.clear(), ANSWER_SECONDS * 1000)
-      if (typeof where !== 'object' || !where) break
+      // A step nobody did goes after a while; one whose click can't be seen stays as long as an answer does.
+      if (done === 'timeout') overlay.clear()
+      if (done === 'blind') setTimeout(() => latest === abort && !abort.signal.aborted && overlay.clear(), ANSWER_SECONDS * 1000)
+      if (typeof done !== 'object' || !done) break
       overlay.clear(true)
       await new Promise(r => setTimeout(r, SETTLE_MS))
       if (abort.signal.aborted) break
       shot = await capture(shot.display)
       canvas.remember(shot)
-      ;({ next, final } = await reply(
-        `${pressed ? 'screen-ink pressed it for me' : 'I clicked it'}${where.on ? ` (${where.on})` : ''}. This is the screen now: show the next step, or say it's done and leave out next.`,
-        shot,
-        false,
-        abort,
-      ))
-      if (doing === abort && next !== undefined) queue(abort, { marks: [await walkButton('Stop', 'stop', next, shot)], append: true, speakCaption: false })
+      step = await reply(`${done.said}. This is the screen now: show the next step, or say it's done and leave out next and scroll.`, shot, false, abort)
+      if (doing === abort && walks(step)) queue(abort, { marks: [await walkButton('Stop', 'stop', step, shot)], append: true, speakCaption: false })
     }
   } catch (e) {
     if (!abort.signal.aborted) queue(abort, { marks: [], caption: `Stopped: ${(e as Error).message}`, speakCaption: false, fadeAfter: ANSWER_SECONDS })
   } finally {
     if (doing === abort) doing = null
     // A new question carries the conversation on; otherwise it waits for a follow-up as usual.
-    if (next !== undefined && abort.signal.reason !== NEW_QUESTION) brain.idle()
+    if (walks(step) && abort.signal.reason !== NEW_QUESTION) brain.idle()
   }
 }
+
+/** A walkthrough's step, as an answer gives it: something to click, or somewhere to scroll. */
+type Step = { next?: Box | string; scroll?: Scroll & { at?: Box | string }; final?: boolean }
+const walks = (s: { next?: unknown; scroll?: unknown }) => s.next !== undefined || s.scroll !== undefined
+
+/** What came of a step: what happened, as the model is told it, or why there is nothing to tell. */
+type Done = { said: string } | 'auto' | 'timeout' | 'blind' | null
 
 /** Whether a walkthrough step offers to be done for the user. */
 const offers = () => settings.get().doIt && process.platform === 'darwin' && systemPreferences.isTrustedAccessibilityClient(false)
 
-/** A step's target as a box in the screenshot's units, and the element it names, if it names one. */
+/** A target as a box in the screenshot's units, and the element it names, if it names one. */
 async function locate(target: Box | string, shot: Capture): Promise<{ box?: Box; element?: sense.Element }> {
   if (typeof target !== 'string') return { box: target }
   const element = (await shot.elements).find(e => e.id === target)
   return { box: element?.box, element }
 }
 
+/** The middle of a box in the screenshot's units, in global points. */
+function global(box: Box, shot: Capture): Point {
+  const { x, y } = shot.display.bounds
+  return [x + (box[0] + box[2] / 2) * shot.ppu, y + (box[1] + box[3] / 2) * shot.ppu]
+}
+
+/** A global point as screen-ink's pointer takes it: points on the overlay's display. */
+const local = ([px, py]: Point, shot: Capture): [number, number] => [px - shot.display.bounds.x, py - shot.display.bounds.y]
+
 /** The walkthrough's own button, at the bottom of the screen, or the top when the step is down there. */
-async function walkButton(text: string, value: 'start' | 'stop', target: Box | string, shot: Capture): Promise<MarkInput> {
-  const { box } = await locate(target, shot)
+async function walkButton(text: string, value: 'start' | 'stop', step: Step, shot: Capture): Promise<MarkInput> {
+  const target = step.next ?? step.scroll?.at
+  const { box } = target === undefined ? {} : await locate(target, shot)
   const low = !!box && box[1] + box[3] > shot.height * 0.7
   return { kind: 'action', id: 'walk', text, do: 'walk', value, at: [shot.width / 2 - 55, low ? 60 : shot.height - 150] }
+}
+
+/** Lets a step be seen, and its words said, before screen-ink does it. Resolves whether it is still screen-ink's to do. */
+async function shown(abort: AbortController): Promise<boolean> {
+  const started = Date.now()
+  await new Promise(r => setTimeout(r, SHOW_MS))
+  while (voice.speaking() && Date.now() - started < SAID_MS && !abort.signal.aborted) await new Promise(r => setTimeout(r, 150))
+  return !abort.signal.aborted && doing === abort
 }
 
 /**
  * Presses `target` for the user once its step has been seen and said. Resolves what was pressed, or why the step
  * is the user's to click: it can't be taken back, the helper can't press it, or the user stopped screen-ink.
  */
-async function pressFor(target: Box | string, final: boolean | undefined, shot: Capture, abort: AbortController): Promise<{ on: string } | string> {
+async function pressFor(target: Box | string, final: boolean | undefined, shot: Capture, abort: AbortController): Promise<Done | string> {
   if (final) return "it can't be taken back"
   const { box, element } = await locate(target, shot)
   if (!box) return "I can't find it on screen"
-  const { x, y } = shot.display.bounds
-  const at: Point = [x + (box[0] + box[2] / 2) * shot.ppu, y + (box[1] + box[3] / 2) * shot.ppu]
+  const at = global(box, shot)
   const look = await sense.press(at, true)
   if (!look.target) return look.refused ?? "there's nothing there to press"
   const name = look.target.label || element?.text || ''
   const leads = look.target.how === 'focus' || LEADS.has(look.target.role)
   if (!leads && YOURS.test(`${look.target.label} ${element?.text ?? ''}`)) return `“${name}” is for you to decide`
-  // Let the step be seen, and its words said, first.
-  const started = Date.now()
-  await new Promise(r => setTimeout(r, SHOW_MS))
-  while (voice.speaking() && Date.now() - started < SAID_MS && !abort.signal.aborted) await new Promise(r => setTimeout(r, 150))
-  if (abort.signal.aborted || doing !== abort) return 'you took over'
-  await overlay.point([at[0] - x, at[1] - y], true, name || undefined) // screen-ink's pointer shows the press first
+  if (!(await shown(abort))) return 'you took over'
+  await overlay.point(local(at, shot), { press: true, label: name || undefined }) // screen-ink's pointer shows the press first
   if (abort.signal.aborted || doing !== abort) return 'you took over'
   const done = await sense.press(at)
-  return done.refused ?? { on: name }
+  return done.refused ?? { said: `screen-ink pressed it for me${name ? ` (${name})` : ''}` }
 }
 
-type Click = { on: string } | 'auto' | 'timeout' | 'blind' | null
+/** Scrolls for the user once the step has been seen and said. Resolves what was done, or why it wasn't. */
+async function scrollFor(s: NonNullable<Step['scroll']>, shot: Capture, abort: AbortController): Promise<Done | string> {
+  const { box } = s.at === undefined ? { box: [0, 0, shot.width, shot.height] as Box } : await locate(s.at, shot)
+  if (!box) return "I can't find what to scroll"
+  const at = global(box, shot)
+  const vertical = s.direction === 'down' || s.direction === 'up'
+  const points = (s.by ?? SCROLL_SHARE * (vertical ? shot.height : shot.width)) * shot.ppu
+  if (!(await shown(abort))) return 'you took over'
+  await overlay.point(local(at, shot), { scroll: s.direction })
+  if (abort.signal.aborted || doing !== abort) return 'you took over'
+  if (!(await sense.scroll(at, s.direction, points))) return 'screen-ink needs Accessibility to scroll'
+  return { said: `screen-ink scrolled ${s.direction} for me` }
+}
 
 /**
- * Waits for a click on `target` (a box in `shot`'s units, or one of its element ids), and resolves the clicked
- * element's words. Or 'timeout' if none comes in time, 'blind' if clicks can't be watched, null if the target is
- * unknown or the walk is stopped.
+ * Waits on the user: `watch` starts watching and calls `finish` with what they did. Or 'auto' when they hand the
+ * step to screen-ink, 'timeout' if they do nothing in time, 'blind' if they can't be watched, null if the walk stops.
  */
-async function clicked(target: Box | string, shot: Capture, signal: AbortSignal): Promise<Click> {
-  const element = typeof target === 'string' ? (await shot.elements).find(e => e.id === target) : undefined
-  const box = typeof target === 'string' ? element?.box : target
-  if (!box || signal.aborted) return null
-  const { x, y } = shot.display.bounds
-  const [left, top] = [x + box[0] * shot.ppu - CLICK_SLOP_PT, y + box[1] * shot.ppu - CLICK_SLOP_PT]
-  const [right, bottom] = [left + box[2] * shot.ppu + 2 * CLICK_SLOP_PT, top + box[3] * shot.ppu + 2 * CLICK_SLOP_PT]
+function waitFor(watch: (finish: (d: Done) => void) => Promise<(() => void) | null>, signal: AbortSignal): Promise<Done> {
   return new Promise(resolve => {
     let settled = false
     let unwatch: (() => void) | null = null
-    const finish = (v: Click) => {
+    const finish = (v: Done) => {
       if (settled) return
       settled = true
       if (takeOver === auto) takeOver = null
@@ -293,18 +315,41 @@ async function clicked(target: Box | string, shot: Capture, signal: AbortSignal)
     const auto = () => finish('auto')
     takeOver = auto
     const timer = setTimeout(() => finish('timeout'), WALK_WAIT_MS)
+    if (signal.aborted) return finish(null)
     signal.addEventListener('abort', aborted, { once: true })
-    void sense
-      .watchClicks(([cx, cy]) => cx >= left && cx <= right && cy >= top && cy <= bottom && finish({ on: element?.text ?? '' }))
-      .then(stop => {
-        if (!stop) {
-          console.log('screen-ink: allow Accessibility to be walked through steps; ask again for the next one meanwhile.')
-          return finish('blind')
-        }
-        if (settled) stop()
-        else unwatch = stop
-      })
+    void watch(finish).then(stop => {
+      if (!stop) {
+        console.log('screen-ink: allow Accessibility to be walked through steps; ask again for the next one meanwhile.')
+        return finish('blind')
+      }
+      if (settled) stop()
+      else unwatch = stop
+    })
   })
+}
+
+/** Waits for a click on `target` (a box in `shot`'s units, or one of its element ids). */
+async function clicked(target: Box | string, shot: Capture, signal: AbortSignal): Promise<Done> {
+  const { box, element } = await locate(target, shot)
+  if (!box || signal.aborted) return null
+  const { x, y } = shot.display.bounds
+  const [left, top] = [x + box[0] * shot.ppu - CLICK_SLOP_PT, y + box[1] * shot.ppu - CLICK_SLOP_PT]
+  const [right, bottom] = [left + box[2] * shot.ppu + 2 * CLICK_SLOP_PT, top + box[3] * shot.ppu + 2 * CLICK_SLOP_PT]
+  const said = `I clicked it${element?.text ? ` (${element.text})` : ''}`
+  return waitFor(finish => sense.watchClicks(([cx, cy]) => cx >= left && cx <= right && cy >= top && cy <= bottom && finish({ said })), signal)
+}
+
+/** Waits for the user to scroll, and for the scrolling to stop. */
+function scrolled(signal: AbortSignal): Promise<Done> {
+  let quiet: NodeJS.Timeout | undefined
+  return waitFor(
+    finish =>
+      sense.watchScrolls(() => {
+        clearTimeout(quiet)
+        quiet = setTimeout(() => finish({ said: 'I scrolled' }), SCROLLED_MS)
+      }),
+    signal,
+  )
 }
 
 // Each mark is drawn as it arrives, in order; drawings wait for the ones before them.
@@ -317,7 +362,7 @@ function queue(abort: AbortController, d: canvas.Drawing): Promise<unknown> {
  * Asks Claude and draws the answer as it is written. `keep` adds it to what is on screen instead of replacing it.
  * Resolves what to click for the next step of a walkthrough, if the answer has one.
  */
-async function reply(question: string, shot: Capture, keep: boolean, abort: AbortController): Promise<{ next?: Box | string; final?: boolean }> {
+async function reply(question: string, shot: Capture, keep: boolean, abort: AbortController): Promise<Step> {
   send({ state: 'thinking' })
 
   // The first mark replaces whatever was there, the rest add to it.
@@ -347,9 +392,9 @@ async function reply(question: string, shot: Capture, keep: boolean, abort: Abor
       caption: answer.caption,
       append: keep || streamed > 0,
       speakCaption: !captionRead && !answer.marks.some(m => words(m).length),
-      fadeAfter: answer.next === undefined ? ANSWER_SECONDS : undefined, // a step stays until it is done
+      fadeAfter: walks(answer) ? undefined : ANSWER_SECONDS, // a step stays until it is done
     })
-    return { next: answer.next as Box | string | undefined, final: answer.final }
+    return { next: answer.next as Box | string | undefined, scroll: answer.scroll as Step['scroll'], final: answer.final }
   } catch (e) {
     if (abort.signal.aborted) return {}
     running = null

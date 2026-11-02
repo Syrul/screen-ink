@@ -150,10 +150,10 @@ ipcMain.on('ink:pointed', (e, id: unknown) => {
 })
 
 /**
- * Moves screen-ink's pointer to `at` (points on the display the overlay is on) and, with `press`, shows a press there
- * named `label`. Resolves once it has, or straight away when the pointer is off or nothing is showing.
+ * Moves screen-ink's pointer to `at` (points on the display the overlay is on), and shows a press there named
+ * `label`, or a scroll. Resolves once it has, or straight away when the pointer is off or nothing is showing.
  */
-export function point(at: [number, number], press = false, label?: string): Promise<void> {
+export function point(at: [number, number], show: { press?: boolean; label?: string; scroll?: string } = {}): Promise<void> {
   const p = page()
   if (!p || !win?.isVisible() || !settings.get().cursor) return Promise.resolve()
   const id = ++lastPoint
@@ -165,7 +165,7 @@ export function point(at: [number, number], press = false, label?: string): Prom
     }
     const timer = setTimeout(done, 2500)
     pointed.set(id, done)
-    p.send('ink:point', { id, at, press, label })
+    p.send('ink:point', { id, at, ...show })
   })
 }
 
