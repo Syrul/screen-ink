@@ -4,6 +4,8 @@
 // ("next", "back", "step 12") and in the build tool for agents. Questions asked meanwhile come with the step's page,
 // so "where does this piece go?" is answered about it. Claude reads the pages once in the background and writes a line
 // for each step (which pieces, where they go); until then a step says its number and how many parts it takes.
+// Where LDraw's library has a 3D model of the set (or the user gives one), the panel shows each step in 3D too: the
+// model's steps are lined up with the booklet's (ldraw.ts) and its parts fetched (models.ts), in the background.
 //
 // Each build is a folder in the builds folder of the app's data: its PDFs, what was found in them and how far the
 // user got, and pages drawn as they are needed. LEGO's PDFs are for the user's own use: fetched to this Mac, never
@@ -13,10 +15,12 @@ import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { BuildMove, BuildPanel } from '../shared/build'
+import type { BuildMove, BuildPanel, BuildParts } from '../shared/build'
 import * as brain from './brain'
 import { displayUnderCursor } from './capture'
 import { read, type Page, type View } from './instructions'
+import { parse, plan, stepModel, type Model, type Shown } from './ldraw'
+import * as models from './models'
 import * as overlay from './overlay'
 import * as sense from './sense'
 
@@ -29,6 +33,7 @@ const PANEL_WIDTH = 1800 // pixels a page is drawn at for the panel
 const LOOK_WIDTH = 1000 // and for Claude to read
 const PAGES_PER_LOOK = 8 // pages Claude reads at once
 const MAX_SAY = 300
+const RECHECK_MS = 30 * 86_400_000 // before looking again for a 3D model LDraw's library didn't have
 
 export interface Source {
   /** A LEGO set number, like 60285. */
@@ -50,6 +55,10 @@ interface Build {
   at: number
   /** When it was last moved, as an ISO date and time. */
   updated: string
+  /** Its 3D model: where it came from (none, when LDraw's library has none), and when that was looked for. */
+  model?: { from: string | null; checked: string }
+  /** Whether the user would rather see the page than the step in 3D. */
+  page?: boolean
 }
 
 export type Summary = Pick<Build, 'id' | 'title' | 'updated'> & { label: string }
@@ -57,6 +66,7 @@ export type Summary = Pick<Build, 'id' | 'title' | 'updated'> & { label: string 
 const root = () => path.join(app.getPath('userData'), 'builds')
 const folder = (id: string) => path.join(root(), id)
 const pdf = (id: string, book: number) => path.join(folder(id), `book${book + 1}.pdf`)
+const modelFile = (id: string) => path.join(folder(id), 'model.mpd')
 const hash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 12)
 
 let current: Build | null = null
@@ -68,6 +78,10 @@ const changed = () => listeners.forEach(fn => fn())
 
 /** Whether a build is open. */
 export const active = () => current !== null
+
+/** Whether the open build's step can be shown in 3D, and whether it is. */
+export const has3d = () => !!current && !!ready.get(current.id)?.shown[current.at]
+export const in3d = () => has3d() && !current!.page
 
 // ---- Finding the instructions
 
@@ -260,6 +274,13 @@ async function show(status?: string): Promise<void> {
   }
   const size = b.sizes[v.book]?.[v.page]
   if (v.crop && size) panel.crop = [v.crop[0] / size[0], v.crop[1] / size[1], v.crop[2] / size[0], v.crop[3] / size[1]]
+  const r = ready.get(b.id)
+  const s = r?.shown[i]
+  if (r && s) {
+    const { old, added } = stepModel(r.model, s)
+    panel.model = { key: r.key, old: old.join('\n'), added: added.join('\n'), credit: r.credit }
+    panel.in3d = !b.page
+  } else panel.modelStatus = modelStatus.get(b.id)
   await overlay.showBuild(d, panel)
   // The next page, ready for Next.
   const next = b.views[i + 1]
@@ -289,6 +310,7 @@ export async function open(src: Source, step?: number): Promise<string> {
   await show()
   changed()
   void describe(b)
+  void prepare(b)
   return where()
 }
 
@@ -300,6 +322,7 @@ export async function resume(id: string): Promise<boolean> {
   await show()
   changed()
   void describe(b)
+  void prepare(b)
   return true
 }
 
@@ -320,9 +343,11 @@ export async function go(move: BuildMove | number): Promise<string | null> {
     close()
     return 'Closed the instructions.'
   }
+  if (move === '3d' && !ready.get(b.id)?.shown[b.at]) return modelStatus.get(b.id) ?? noModel.get(b.id) ?? 'This step has no 3D view.'
   if (typeof move === 'number') {
     if (!goTo(move)) return null
-  } else if (move === 'next') b.at = Math.min(b.at + 1, b.views.length - 1)
+  } else if (move === '3d' || move === 'page') b.page = move === 'page'
+  else if (move === 'next') b.at = Math.min(b.at + 1, b.views.length - 1)
   else if (move === 'back') b.at = Math.max(b.at - 1, 0)
   save(b)
   await show()
@@ -344,7 +369,8 @@ export function where(): string {
   const b = current
   if (!b) return 'No instructions are open.'
   const s = said(b, b.at)
-  return `Showing ${label(b, b.at).toLowerCase()} of ${b.title} (view ${b.at + 1} of ${b.views.length})${s ? `: ${s}` : '.'}`
+  const in3d = ready.get(b.id)?.shown[b.at] && !b.page ? ' in 3D' : ''
+  return `Showing ${label(b, b.at).toLowerCase()} of ${b.title}${in3d} (view ${b.at + 1} of ${b.views.length})${s ? `: ${s}` : '.'}`
 }
 
 const NUMBERS: Record<string, number> = {
@@ -363,6 +389,8 @@ export async function command(question: string): Promise<boolean> {
   if (/^(back|go back|previous|previous step|last step|step back)$/.test(q)) return !!(await go('back'))
   if (/^(again|repeat|repeat that|say (it|that) again|what was that)$/.test(q)) return !!(await go('again'))
   if (/^(stop|close|end|quit|exit|hide)( the)? (build|building|instructions)$/.test(q)) return !!(await go('close'))
+  if (/^(show )?(it |the step |the model )?(in )?(3d|three d)$/.test(q)) return !!(await go('3d'))
+  if (/^(show )?(the )?(page|instructions page|picture)$/.test(q)) return !!(await go('page'))
   const step = /^(go to |show |show me )?step (\d+|[a-z]+)$/.exec(q)?.[2]
   const n = step === undefined ? undefined : /^\d+$/.test(step) ? Number(step) : NUMBERS[step]
   return n !== undefined && !!(await go(n))
@@ -394,6 +422,102 @@ function side(v: View): string {
 }
 
 overlay.onBuild(move => void go(move))
+
+// ---- The steps in 3D
+
+interface Ready {
+  /** Which model it is, for the page. */
+  key: string
+  model: Model
+  /** What each view shows of it, if anything. */
+  shown: (Shown | null)[]
+  parts: BuildParts
+  credit: string
+}
+
+const ready = new Map<string, Ready>() // by build: the open one's, once it is
+const preparing = new Set<string>()
+const modelStatus = new Map<string, string>() // what is happening meanwhile
+const noModel = new Map<string, string>() // or why there's none
+
+overlay.onBuildParts(key => [...ready.values()].find(r => r.key === key)?.parts ?? null)
+
+/**
+ * Gets the 3D model of `b` ready, if there is one: its file (fetched from LDraw's library once, for a set), its steps
+ * lined up with the booklet's, and its parts. The panel shows the steps in 3D once it's ready.
+ */
+async function prepare(b: Build): Promise<void> {
+  if (ready.has(b.id) || preparing.has(b.id)) return
+  for (const id of ready.keys()) if (id !== b.id) ready.delete(id) // only the open build's parts are kept
+  preparing.add(b.id)
+  const status = (text?: string) => {
+    if (text) modelStatus.set(b.id, text)
+    else modelStatus.delete(b.id)
+    if (current?.id === b.id) void show()
+  }
+  try {
+    const file = modelFile(b.id)
+    let text: string
+    if (fs.existsSync(file)) text = fs.readFileSync(file, 'utf8')
+    else {
+      const none = `LDraw's library has no 3D model of ${b.source}.`
+      if (!SET.test(b.source)) return void noModel.set(b.id, 'There is no 3D model: give one (an LDraw .ldr or .mpd file) to see the steps in 3D.')
+      if (b.model && Date.now() - Date.parse(b.model.checked) < RECHECK_MS) return void noModel.set(b.id, none)
+      status('Looking for a 3D model…')
+      const url = await models.findModel(b.source)
+      const live = current?.id === b.id ? current : b
+      live.model = { from: url, checked: new Date().toISOString() }
+      save(live)
+      if (!url) return void noModel.set(b.id, none)
+      status('Fetching the 3D model…')
+      await models.fetchModel(url, file)
+      text = fs.readFileSync(file, 'utf8')
+    }
+    const model = parse(text)
+    const shown = plan(model, b.views)
+    if (!shown) return void noModel.set(b.id, "The 3D model's steps don't line up with these instructions.")
+    status("Fetching the 3D model's parts…")
+    let told = Date.now()
+    const { text: pack } = await models.pack(model, (done, known) => {
+      if (Date.now() - told < 2000) return
+      told = Date.now()
+      status(`Fetching the 3D model's parts: ${done} of ${known}…`)
+    })
+    const colours = models.usedColours(await models.colours(), pack, text)
+    const by = model.author?.replace(/\s*\[[^\]]*\]$/, '')
+    const from = (current?.id === b.id ? current : b).model?.from
+    const credit = `3D model${by ? ` by ${by}` : ''}${!from || from.startsWith('https://library.ldraw.org/') ? ', from LDraw' : ''} · CC BY`
+    ready.set(b.id, { key: `${b.id}-${hash(text)}`, model, shown, parts: { pack, colours }, credit })
+    noModel.delete(b.id)
+  } catch (e) {
+    noModel.set(b.id, `Couldn't get the 3D model: ${(e as Error).message}`)
+  } finally {
+    preparing.delete(b.id)
+    status()
+    if (current?.id === b.id) changed()
+  }
+}
+
+/** Shows the open build's steps in 3D from an LDraw model (.ldr or .mpd) in the user's home folder. */
+export async function useModel(file: string): Promise<string> {
+  const b = current
+  if (!b) throw new Error('No instructions are open.')
+  if (preparing.has(b.id)) throw new Error('Its 3D model is still being got ready: try again in a moment.')
+  const to = modelFile(b.id)
+  const before = fs.existsSync(to) ? fs.readFileSync(to) : null
+  if (!plan(models.copyModel(file, to), b.views)) {
+    if (before) fs.writeFileSync(to, before)
+    else fs.rmSync(to, { force: true })
+    throw new Error(`The steps of ${path.basename(file)} don't line up with these instructions.`)
+  }
+  ready.delete(b.id)
+  noModel.delete(b.id)
+  b.model = { from: path.basename(file), checked: new Date().toISOString() }
+  b.page = false
+  save(b)
+  void prepare(b)
+  return `Showing the steps of ${b.title} in 3D from ${path.basename(file)} once its parts are fetched.`
+}
 
 // ---- Claude reads the pages
 

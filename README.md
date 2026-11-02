@@ -227,8 +227,21 @@ between them. Claude then reads the pages in the background, eight at a time fro
 spoken line for each (which pieces, by colour and size in studs, and where they go); until it has, a step says its
 number and how many parts it takes. That needs Claude Code or an API key; with Codex the steps go without.
 
+Where LDraw's library has a 3D model of the set (it has about 1,500, built from their booklets by LDraw's
+volunteers), the panel shows each step in 3D too: the model so far, and the step's new parts dropping into place,
+lit up as they land and outlined in the ink after, in their own colours. Drag to turn it, scroll to zoom, and click
+to see the new parts drop in again; **3D** and **Page** switch between it and the booklet's page, as do *3D* and
+*page* said in the bar. The model's steps are lined up with the booklet's by how many parts each takes (such models
+follow their booklets closely, not exactly: a step split in two, two merged), and a model that doesn't line up isn't
+shown. Its parts come from LDraw's parts library a file at a time, first from the copy three.js's examples load
+theirs from, on GitHub, then from LDraw's own site, which takes a request a second. They're kept in the `ldraw` folder
+of the app's data, so a set's first model takes a little while and later ones less. For a set the library has no
+model of, give one: Building instructions → Open a 3D model for these instructions… takes an LDraw `.ldr` or `.mpd`
+in your home folder whose steps match the booklet's. LDraw's models and parts are free to use with credit (CC BY), and
+the panel names the model's author.
+
 Each build is a folder in the `builds` folder of the app's data: the PDFs, what was found in them, how far you got,
-and pages drawn as they are needed. Only LEGO's own PDF addresses are fetched, and a PDF of your own has to be in
+pages drawn as they are needed, and its 3D model. Only LEGO's own PDF addresses are fetched, and a PDF of your own has to be in
 your home folder. LEGO's instructions are for your own use: they stay on your Mac, and go nowhere but to the model
 that reads them.
 
@@ -275,7 +288,7 @@ bike's gearing work?"* for a 3D figure.
 | `save_lesson` | Keeps the last drawing, with what was appended to it, as a lesson (optional `title`). |
 | `lessons` | Lists the saved lessons. |
 | `show_lesson` | Draws a lesson again by `id`, scaled to the display. Needs no screenshot. |
-| `build` | Shows a LEGO `set`'s building instructions, or an instructions PDF `file` in the home folder, a step at a time in a panel that reads each step out (see [Building along](#building-along)), at `step` or where the user got to. With `go` (`next`, `back`, `again` or `close`) or `step` alone, moves the ones open; with nothing, says what is showing. Needs no screenshot. |
+| `build` | Shows a LEGO `set`'s building instructions, or an instructions PDF `file` in the home folder, a step at a time in a panel that reads each step out (see [Building along](#building-along)), at `step` or where the user got to. With `go` (`next`, `back`, `again`, `close`, `3d` or `page`) or `step` alone, moves the ones open; `model`, an LDraw `.ldr` or `.mpd` in the home folder, shows their steps in 3D when LDraw's library has no model of the set; with nothing, says what is showing. Needs no screenshot. |
 | `clear` | Erases everything. |
 
 Marks (coordinates in screenshot units; `box` is `[x, y, w, h]`, points are `[x, y]`). A ring's, label's,
@@ -421,7 +434,10 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/main/lessons.ts](src/main/lessons.ts) | Follows the drawing on screen, saves it as a lesson, and gives it back to draw again |
 | [src/main/builds.ts](src/main/builds.ts) | Building along: fetches the instructions, keeps each build and where it got to, shows its steps, has Claude describe them |
 | [src/main/instructions.ts](src/main/instructions.ts) | Finds the steps in an instructions PDF's words: step numbers, split pages, part counts |
+| [src/main/ldraw.ts](src/main/ldraw.ts) | Reads an LDraw model, lines its steps up with the booklet's, and lays out what each step shows in 3D |
+| [src/main/models.ts](src/main/models.ts) | Finds a set's model in LDraw's library, and fetches, keeps and packs the parts it's made of |
 | [src/renderer/build.ts](src/renderer/build.ts), [src/shared/build.ts](src/shared/build.ts) | The build panel, and what it is sent |
+| [src/renderer/model.ts](src/renderer/model.ts) | The build panel's 3D view: the step drawn, its new parts dropping in and outlined, turned by dragging |
 | [src/main/settings.ts](src/main/settings.ts) | Saved settings, the environment's overrides, the encrypted API key |
 | [src/main/settings-window.ts](src/main/settings-window.ts), [src/renderer/settings.ts](src/renderer/settings.ts) | Settings and first-run setup |
 | [src/main/licence.ts](src/main/licence.ts), [scripts/licence.mjs](scripts/licence.mjs) | Offline Ed25519 licence keys |

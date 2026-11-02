@@ -208,6 +208,65 @@
         top: 0;
         max-width: none;
       }
+      /* The step in 3D, turned by dragging, and the switch between it and the page. */
+      .build-3d {
+        display: none;
+        cursor: grab;
+        touch-action: none;
+      }
+      #build.dragging .build-3d {
+        cursor: grabbing;
+      }
+      #build.in3d .build-view {
+        background: radial-gradient(ellipse at 50% 40%, #ffffff 0%, #efe9dd 100%);
+      }
+      #build.in3d .build-3d {
+        display: block;
+      }
+      #build.in3d .build-view img {
+        display: none;
+      }
+      .build-modes {
+        display: none;
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        padding: 2px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+      #build.has3d .build-modes {
+        display: flex;
+      }
+      .build-modes button {
+        border: 0;
+        border-radius: 8px;
+        padding: 4px 11px;
+        background: transparent;
+        color: #6b6f76;
+        font: 600 12px -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        cursor: pointer;
+      }
+      .build-modes button.on {
+        background: var(--build);
+        color: #fff;
+      }
+      .build-note {
+        position: absolute;
+        right: 12px;
+        bottom: 8px;
+        max-width: calc(100% - 24px);
+        padding: 2px 8px;
+        border-radius: 8px;
+        background: rgba(251, 248, 242, 0.88);
+        color: #7c8087;
+        font-size: 11px;
+        pointer-events: none;
+      }
+      .build-note:empty {
+        display: none;
+      }
       .build-status {
         display: none;
         padding: 36px 20px;

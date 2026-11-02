@@ -78,6 +78,8 @@ function buildsMenu(): Electron.MenuItemConstructorOptions[] {
   const moves: Electron.MenuItemConstructorOptions[] = [
     { label: 'Next step', click: () => void builds.go('next') },
     { label: 'Previous step', click: () => void builds.go('back') },
+    { label: 'Show the step in 3D', type: 'checkbox', checked: builds.in3d(), enabled: builds.has3d(), click: item => void builds.go(item.checked ? '3d' : 'page') },
+    { label: 'Open a 3D model for these instructions…', click: () => void openModel() },
     { label: 'Put the instructions away', click: () => builds.close() },
     { type: 'separator' },
   ]
@@ -94,6 +96,11 @@ function buildsMenu(): Electron.MenuItemConstructorOptions[] {
 async function openPdf(): Promise<void> {
   const { filePaths } = await dialog.showOpenDialog({ title: 'Building instructions', filters: [{ name: 'PDF', extensions: ['pdf'] }], properties: ['openFile'] })
   if (filePaths[0]) await builds.open({ file: filePaths[0] }).catch(e => console.error(`screen-ink: ${(e as Error).message}`))
+}
+
+async function openModel(): Promise<void> {
+  const { filePaths } = await dialog.showOpenDialog({ title: '3D model of the set', filters: [{ name: 'LDraw model', extensions: ['ldr', 'mpd'] }], properties: ['openFile'] })
+  if (filePaths[0]) await builds.useModel(filePaths[0]).catch(e => dialog.showErrorBox("Couldn't use that model", (e as Error).message))
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()

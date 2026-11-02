@@ -34,5 +34,6 @@ of the screen, sent again as each step starts, finishes or fails. It needs no sc
 keeping (a lesson they will want again), `save_lesson` keeps it, and `show_lesson` draws it again later.
 
 When the user wants to build a LEGO set (or follow an instructions PDF they have), `build` with the set number shows
-the instructions a step at a time on the side of their screen and reads each step out. They move on with its Next
-button; `build` with `go` moves it for them when they ask you.
+the instructions a step at a time on the side of their screen and reads each step out, in 3D too when LDraw's library
+has a model of the set. They move on with its Next button; `build` with `go` moves it for them when they ask you
+(`3d` and `page` switch the view). If they have an LDraw model of a set the library lacks, pass it as `model`.

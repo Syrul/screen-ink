@@ -3,7 +3,7 @@ import { app, BrowserWindow, clipboard, ipcMain, screen, shell, type Display } f
 import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { BUILD_MOVES, type BuildMove, type BuildPanel } from '../shared/build'
+import { BUILD_MOVES, type BuildMove, type BuildPanel, type BuildParts } from '../shared/build'
 import { speaksCaption, words } from '../shared/caption'
 import type { DrawPayload } from '../shared/marks'
 import * as handoff from './handoff'
@@ -155,6 +155,10 @@ export const onBuild = (fn: (move: BuildMove) => void) => void (building = fn)
 ipcMain.on('ink:build-go', (e, move: unknown) => {
   if (e.sender === page() && BUILD_MOVES.includes(move as BuildMove)) building?.(move as BuildMove)
 })
+let partsOf: ((key: string) => BuildParts | null) | null = null
+/** Who hands the page a 3D model's parts. */
+export const onBuildParts = (fn: (key: string) => BuildParts | null) => void (partsOf = fn)
+ipcMain.handle('ink:build-parts', (e, key: unknown) => (e.sender === page() && typeof key === 'string' ? (partsOf?.(key) ?? null) : null))
 // A step's words go without a caption: the panel shows them.
 ipcMain.handle('ink:build-say', (e, text: unknown) => {
   if (e.sender === page() && typeof text === 'string') return voice.speak(text)

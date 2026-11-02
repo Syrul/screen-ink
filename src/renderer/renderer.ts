@@ -3,7 +3,7 @@
 // A mark's `say` is spoken as it starts, and the drawing waits at the mark's end until the words are out.
 // Opened in a plain browser (no `window.inkBridge`) it draws the demo over a mock window instead.
 import { getStroke } from 'perfect-freehand'
-import type { BuildMove, BuildPanel } from '../shared/build'
+import type { BuildMove, BuildPanel, BuildParts } from '../shared/build'
 import { speaksCaption } from '../shared/caption'
 import { DEMO_CAPTION, DEMO_FIGURE_CAPTION, DEMO_FIGURE_MARKS, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
 import type { Box, DrawPayload, Mark, Point } from '../shared/marks'
@@ -33,6 +33,7 @@ declare global {
       onBuild(cb: (p: BuildPanel | null) => void): void
       buildGo(move: BuildMove): void
       buildSay(text: string): Promise<void>
+      buildParts(key: string): Promise<BuildParts | null>
     }
   }
 }
@@ -417,7 +418,7 @@ function fadeLater(seconds: number): void {
 // While the mouse is on a card the drawing doesn't fade.
 let overCard = false
 function trackPointer(e: MouseEvent): void {
-  const over = !!document.querySelector('.card.dragging') || !!document.elementFromPoint(e.clientX, e.clientY)?.closest('.card, .interactive')
+  const over = !!document.querySelector('.card.dragging, #build.dragging') || !!document.elementFromPoint(e.clientX, e.clientY)?.closest('.card, .interactive')
   if (over === overCard) return
   overCard = over
   window.inkBridge?.pointer(over)
@@ -512,7 +513,7 @@ if (window.inkBridge) {
     window.inkBridge!.pointed(p.id)
   })
   const bridge = window.inkBridge
-  build.connect({ go: move => bridge.buildGo(move), speak: text => void bridge.buildSay(text) })
+  build.connect({ go: move => bridge.buildGo(move), speak: text => void bridge.buildSay(text), parts: key => bridge.buildParts(key) })
   bridge.onBuild(build.show)
   document.addEventListener('mousemove', trackPointer)
 } else {

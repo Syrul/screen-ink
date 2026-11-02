@@ -1,8 +1,9 @@
 // The only bridge into the overlay page: drawings in, words out to be spoken and when they are, whether the mouse
 // is over a card, questions about a figure's parts, figures saved as 3D models, the buttons the user clicks, where
-// screen-ink's own pointer goes and presses, and the build panel's steps in and its buttons out.
+// screen-ink's own pointer goes and presses, the build panel's steps in and its buttons out, and the parts of the
+// steps' 3D models.
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BuildPanel } from '../shared/build'
+import type { BuildPanel, BuildParts } from '../shared/build'
 import type { DrawPayload } from '../shared/marks'
 
 type Point = { id: number; at: [number, number]; press?: boolean; label?: string; scroll?: 'down' | 'up' | 'right' | 'left' }
@@ -21,4 +22,5 @@ contextBridge.exposeInMainWorld('inkBridge', {
   onBuild: (cb: (p: BuildPanel | null) => void) => ipcRenderer.on('ink:build', (_e, p: BuildPanel | null) => cb(p)),
   buildGo: (move: string) => ipcRenderer.send('ink:build-go', move),
   buildSay: (text: string): Promise<void> => ipcRenderer.invoke('ink:build-say', text),
+  buildParts: (key: string): Promise<BuildParts | null> => ipcRenderer.invoke('ink:build-parts', key),
 })

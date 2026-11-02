@@ -18,7 +18,29 @@ export interface BuildPanel {
   status?: string
   /** The ink's colour, for the panel's buttons. */
   ink?: string
+  /** The step in 3D, when there's a model of the set that lines up with the instructions. */
+  model?: BuildModel
+  /** Whether the panel shows it, rather than the page. */
+  in3d?: boolean
+  /** Meanwhile, what is happening with the 3D model: being looked for, its parts being fetched. */
+  modelStatus?: string
 }
 
-export const BUILD_MOVES = ['next', 'back', 'again', 'close'] as const
+export interface BuildModel {
+  /** Which model it is: the page asks for its parts once, by this. */
+  key: string
+  /** The parts placed before the step, and the step's own, as LDraw lines. */
+  old: string
+  added: string
+  /** Who made the model, to credit. */
+  credit: string
+}
+
+/** A model's parts, as one MPD of every file they use, and the LDraw colours they come in. */
+export interface BuildParts {
+  pack: string
+  colours: string
+}
+
+export const BUILD_MOVES = ['next', 'back', 'again', 'close', '3d', 'page'] as const
 export type BuildMove = (typeof BUILD_MOVES)[number]
