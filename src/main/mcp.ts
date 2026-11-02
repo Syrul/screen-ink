@@ -66,7 +66,8 @@ function buildServer(): McpServer {
       title: 'Draw on the screen',
       description:
         'Draws hand-drawn marks over the display from the last screenshot, in its coordinates. Call screenshot first, and again ' +
-        'whenever the screen may have changed. Marks animate in order like a pen. The drawing replaces the current one unless append is true.',
+        'whenever the screen may have changed. Marks animate in order like a pen. The drawing replaces the current one unless append is true. ' +
+        'Give a mark an id to change it later: with append, a mark with the same id replaces it, and remove takes marks away by id.',
       inputSchema: drawShape,
     },
     async args => {
@@ -76,12 +77,13 @@ function buildServer(): McpServer {
       } catch (e) {
         return text((e as Error).message, true)
       }
-      const { display: d, drawn: n, missing } = drawn
+      const { display: d, drawn: n, missing, failed } = drawn
       const fade = args.fadeAfter ? `, fading ${args.fadeAfter}s after it finishes` : ', staying until cleared'
       const skipped = missing.length ? ` Left out marks on ${missing.join(', ')}: the last screenshot has no such element.` : ''
       const problems = checkMarks(args.marks)
       const check = problems.length ? `\nThe figure won't work as meant: ${problems.join(' ')} Fix it and draw it again.` : ''
-      return text(`Drew ${n} mark${n === 1 ? '' : 's'} on display ${d.id}${fade}.${skipped}${check}`)
+      const photos = failed.length ? ` Left out ${failed.length} photo${failed.length === 1 ? '' : 's'}: ${failed.join('; ')}` : ''
+      return text(`Drew ${n} mark${n === 1 ? '' : 's'} on display ${d.id}${fade}.${skipped}${photos}${check}`)
     },
   )
 

@@ -38,11 +38,15 @@ const MATERIALS: Record<string, { color?: string; metalness: number; roughness: 
   plastic: { metalness: 0, roughness: 0.38, clearcoat: 0.5 },
 }
 
-const live = new Set<{ dispose(): void }>()
+const live = new Set<{ dispose(): void; card: HTMLElement }>()
 
-export function disposeFigures(): void {
-  for (const f of live) f.dispose()
-  live.clear()
+/** Disposes the figures in `host`, or all of them. */
+export function disposeFigures(host?: HTMLElement): void {
+  for (const f of live) {
+    if (host && !host.contains(f.card)) continue
+    f.dispose()
+    live.delete(f)
+  }
 }
 
 // Three bands of light: flat, illustrated shading.
@@ -867,6 +871,7 @@ function build(m: FigureMark, mech: Mechanism, r: Rect, ink: string, host: HTMLE
   raf = requestAnimationFrame(loop)
 
   const figure = {
+    card,
     showCard(t: number) {
       card.style.opacity = String(clamp(t * 3, 0, 1))
       card.style.transform = `scale(${0.92 + 0.08 * easeBack(t)})`

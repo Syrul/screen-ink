@@ -1,11 +1,12 @@
 // The overlay: one transparent, click-through window that sits over a whole display, above everything.
-import { app, BrowserWindow, ipcMain, shell, type Display } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, shell, type Display } from 'electron'
 import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { speaksCaption, words } from '../shared/caption'
 import type { DrawPayload } from '../shared/marks'
-import { CAPTIONS } from './config'
+import { CAPTIONS, SOUNDS } from './config'
+import * as sense from './sense'
 import * as voice from './voice'
 
 const FIRST_WORDS_WAIT_MS = 1500 // the most a drawing waits for its first words to be ready
@@ -33,6 +34,7 @@ function overlayWindow(): BrowserWindow {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      autoplayPolicy: 'no-user-gesture-required', // the pen's sounds start without a click
     },
   })
   win.setAlwaysOnTop(true, 'screen-saver')
@@ -59,6 +61,12 @@ export function setCaptions(value: boolean): void {
   captions = value
 }
 
+let sounds = SOUNDS
+export const soundsOn = () => sounds
+export function setSounds(value: boolean): void {
+  sounds = value
+}
+
 // The page asks for each mark's words as it draws; the answer comes once they are said. Meanwhile it is told when
 // they start and how long they take, to caption them.
 ipcMain.handle('ink:speak', (e, text: unknown) => {
@@ -77,6 +85,24 @@ ipcMain.handle('ink:save', async (e, name: unknown, usdz: unknown) => {
   await writeFile(file, usdz)
   shell.showItemInFolder(file)
   return file
+})
+
+// A button the user clicked on a card: copy its text, open its link, or type its text into the app in front (the
+// overlay never takes focus, so that is still the app they were in). Only links to web pages and System Settings
+// open, and text with line breaks is copied rather than typed, so a button can't press Return for anyone.
+const OPENABLE = /^(https:\/\/|x-apple\.systempreferences:)/
+ipcMain.handle('ink:act', async (e, what: unknown, value: unknown): Promise<'done' | 'copied' | null> => {
+  if (e.sender !== page() || typeof value !== 'string' || value.length > 2000) return null
+  if (what === 'copy' || (what === 'type' && /[\r\n]/.test(value))) {
+    clipboard.writeText(value)
+    return what === 'copy' ? 'done' : 'copied'
+  }
+  if (what === 'open') {
+    if (!OPENABLE.test(value)) return null
+    return shell.openExternal(value).then(() => 'done' as const, () => null)
+  }
+  if (what === 'type') return (await sense.type(value)) ? 'done' : null
+  return null
 })
 
 /** Moves the overlay over `display` and draws. */
@@ -98,7 +124,7 @@ export async function draw(display: Display, payload: DrawPayload): Promise<void
     w.setBounds(b)
   }
   w.showInactive()
-  w.webContents.send('ink:draw', payload)
+  w.webContents.send('ink:draw', { sounds, ...payload })
 }
 
 export function clear(instant = false): void {

@@ -62,6 +62,13 @@ stays for two minutes after each answer. Ask again within that time and the bar 
 question continues the conversation ("and then?", "the other one"), with a fresh screenshot of the screen as
 it is now. ⌘N in the bar starts a new conversation instead.
 
+**Walkthroughs.** For a task that takes several clicks ("turn on the path bar", "where do I change my DNS?"),
+Claude shows only the first step and names what to click. screen-ink watches for that click (the helper listens
+to left clicks while a step is up; it needs Accessibility), waits a moment for the menu or pane it opens, takes a
+fresh screenshot and asks for the next step, until Claude says it's done. A step nobody clicks goes after five
+minutes; the shortcut or ⌃⌥Esc stops the walk. Without Accessibility the first step is drawn as usual, and asking
+again carries on.
+
 The first `screenshot` asks macOS for Screen Recording access. In development the permission belongs to
 **Electron**. Turn it on in System Settings → Privacy & Security → Screen & System Audio Recording, then
 restart `npm start`.
@@ -163,12 +170,13 @@ bike's gearing work?"* for a 3D figure.
 | Tool | What it does |
 | --- | --- |
 | `screenshot` | Screenshot of the display under the mouse (or the main one), without screen-ink's own marks, plus the numbered list of elements on it. Fixes the coordinate space and the ids for `draw`. |
-| `draw` | Draws `marks` in order, plus an optional `caption`. Replaces the current drawing unless `append`; `fadeAfter` seconds makes it fade away. |
+| `draw` | Draws `marks` in order, plus an optional `caption`. Replaces the current drawing unless `append`; `fadeAfter` seconds makes it fade away. A mark with an `id` can be changed later: with `append`, a mark with the same id replaces it, and `remove` takes marks away by id. |
 | `clear` | Erases everything. |
 
 Marks (coordinates in screenshot units; `box` is `[x, y, w, h]`, points are `[x, y]`). A ring's, label's,
-frame's, underline's, highlight's or spotlight's `box`, an arrow's `from` and `to`, and a badge's `at` can be an
-element id instead: a box becomes the element's, an arrow stops at its edge, and a badge sits just left of it.
+frame's, underline's, highlight's, spotlight's or card's `box`, an arrow's or connector's `from` and `to`, and a
+badge's, check's or cross's `at` can be an element id instead: a box becomes the element's, an arrow stops at its
+edge, and a badge sits just left of it.
 
 | kind | fields |
 | --- | --- |
@@ -182,9 +190,33 @@ element id instead: a box becomes the element's, an arrow stops at its edge, and
 | `text` | `at`, `text`, `size`: handwriting |
 | `line` | `points`: freehand |
 | `spotlight` | `box`: dims everything else |
+| `check`, `cross` | `at`: a tick or a cross, to judge options |
+| `strike` | `box`: a line through it, for what's wrong or out of date |
+| `connect` | `from`, `to` (boxes), `text`: a curve tying two things together, dots at its ends |
+| `note` | `box` or `at`, `side`, `title`, `text`: a few sentences on a card beside the target |
+| `code` | `box` or `at`, `side`, `code`, `title`, `highlight` (line numbers): a code card with a Copy button |
+| `math` | `box` or `at`, `side`, `tex`: a typeset formula (LaTeX, rendered by [Temml](https://temml.org) to MathML) |
+| `plot` | `box`, `title`, `x`, `y`, `series` (lines of points) or `bars`: a chart on a card, axes scaled to the data |
+| `timeline` | `box`, `title`, `events` (`when`, `text`): events along a line |
+| `flow` | `box`, `title`, `nodes` (`box`, `round` or `diamond`), `edges`, `direction`: a flowchart that lays itself out |
+| `photo` | `box`, `url`, `source`, `caption`: a photo from Wikimedia Commons with its source (below) |
+| `action` | `box` or `at`, `side`, `text`, `do` (`copy`, `open` or `type`), `value`: a button (below) |
 | `figure` | `box`, `title`, `parts`, `labels`, `view`, `turntable`: a 3D model on a card (below) |
 
-Every mark takes `say` and `delay`, and every mark but `spotlight` takes `color`. The schema lives in
+Every mark takes `say`, `delay` and `id`, and every mark but `spotlight` takes `color`.
+
+**Buttons.** An `action` does nothing until the user clicks it. `copy` puts its value on the clipboard. `open`
+opens a web page (`https:` only) or a System Settings pane (`x-apple.systempreferences:`). `type` types its value
+into the app in front, as if from the keyboard (the overlay never takes focus, so that's the app you were in);
+it needs Accessibility, and a value with a line break is copied instead, so a button can never press Return for
+you. A code card's Copy button and a photo's source link work the same way.
+
+**Photos** are fetched by the app, not the overlay page, and only from `upload.wikimedia.org` unless
+`SCREEN_INK_PHOTO_HOSTS` lists others: the address is chosen by a model that has seen your screen, so an open
+fetch could carry what's on it anywhere. Only PNG, JPEG, GIF, WebP and AVIF up to 6 MB, within 6 seconds.
+
+**Pen sounds.** A soft scratch while a stroke draws and a tap as a card lands, made from filtered noise on the
+spot. **Pen sounds** in the menu turns them off, and `SCREEN_INK_SOUNDS=off` starts without them. The schema lives in
 [src/shared/marks.ts](src/shared/marks.ts) and is what the agent sees.
 
 ### 3D figures
@@ -244,7 +276,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 
 - `npm run preview` opens the overlay page in your browser, where it draws the demo over a mock window
   (2 for the pen demo, 3 for the 3D one, R to replay; `#3d` in the URL starts with 3D). The quickest way to
-  work on the look; `drawPreview(marks, caption)` in its console draws any marks.
+  work on the look; `drawPreview(marks, caption, { append, remove })` in its console draws any marks.
 - `npm run typecheck`, `npm run build`.
 - Settings ([src/main/config.ts](src/main/config.ts)): `SCREEN_INK_PORT` (default 7377), `SCREEN_INK_COLOR`
   (ink hex, default `#FF5A36`), `SCREEN_INK_HOTKEY` (default `Alt+Shift+Space`, an
@@ -255,7 +287,8 @@ glass are lit by a soft studio room so they shine, and keep the ink.
   (a Kokoro voice, default `af_heart`; `say` or `say:<macOS voice>`; or `off` to start with voice off),
   `SCREEN_INK_CAPTIONS=off` (start without captions), `SCREEN_INK_LISTEN=off` (the bar only takes typing),
   `SCREEN_INK_CHECK` (`on` or `off`: deep mode, which checks figures and has Claude fix them before they are
-  drawn; on by default at `high` effort and above), `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
+  drawn; on by default at `high` effort and above), `SCREEN_INK_SOUNDS=off` (start without pen sounds),
+  `SCREEN_INK_PHOTO_HOSTS` (hosts photos may come from, comma-separated; default `upload.wikimedia.org`), `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
 
 | File | Role |
 | --- | --- |
@@ -267,12 +300,17 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/main/canvas.ts](src/main/canvas.ts) | The last screenshot's coordinate space, shared by MCP and the shortcut |
 | [src/main/capture.ts](src/main/capture.ts) | Screenshots and the unit → point scale |
 | [src/main/sense.ts](src/main/sense.ts) | Runs the helper, merges its controls and text into the element list, places marks that name ids |
-| [native/sense.swift](native/sense.swift) | The helper: Accessibility walk, Vision OCR, splitting lines by their ink |
+| [native/sense.swift](native/sense.swift) | The helper: Accessibility walk, Vision OCR, splitting lines by their ink; typing for buttons, watching clicks for walkthroughs |
+| [src/main/photos.ts](src/main/photos.ts) | Fetches photo marks' images, from allowed hosts only |
 | [src/main/overlay.ts](src/main/overlay.ts) | The transparent, click-through window |
 | [src/main/voice.ts](src/main/voice.ts) | Speaks each mark's words with Kokoro, or `say` until it's ready |
 | [src/main/listen.ts](src/main/listen.ts) | Turns the bar's recording into text with Moonshine |
 | [src/renderer/renderer.ts](src/renderer/renderer.ts) | Marks → animated beats |
 | [src/renderer/shapes.ts](src/renderer/shapes.ts) | Hand-drawn geometry |
+| [src/renderer/ink.ts](src/renderer/ink.ts) | The pen: strokes, pills and pop-ins every mark is made of |
+| [src/renderer/cards.ts](src/renderer/cards.ts) | Notes, code, formulas, photos and buttons, as HTML cards |
+| [src/renderer/charts.ts](src/renderer/charts.ts) | Plots, timelines and auto-laid-out flowcharts |
+| [src/renderer/sounds.ts](src/renderer/sounds.ts) | The pen's scratch and tap |
 | [src/renderer/figure.ts](src/renderer/figure.ts) | 3D figures: parts, motion, framing, labels, steps, replay and saving |
 | [src/shared/mechanism.ts](src/shared/mechanism.ts) | Works out linked parts: gear spacing and phase, speeds, cranks, belts, gravity's timing |
 | [src/shared/check.ts](src/shared/check.ts) | What's wrong with a figure, for the agent or for deep mode |

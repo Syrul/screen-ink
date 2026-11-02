@@ -48,7 +48,10 @@ app.whenReady().then(() => {
     app.quit()
   })
   const toggleAsk = () => void ask.toggle()
-  const clearInk = () => overlay.clear()
+  const clearInk = () => {
+    ask.stop()
+    overlay.clear()
+  }
   if (!globalShortcut.register(ASK_SHORTCUT, toggleAsk)) {
     console.error(`screen-ink: ${ASK_SHORTCUT} is taken by another app; set SCREEN_INK_HOTKEY to another shortcut.`)
   }
@@ -69,6 +72,7 @@ app.whenReady().then(() => {
       { label: 'Speak answers', type: 'checkbox', checked: voice.isOn(), click: item => voice.setOn(item.checked) },
       { label: 'Listen when the bar opens', type: 'checkbox', checked: listen.isOn(), click: item => listen.setOn(item.checked) },
       { label: 'Caption what it says', type: 'checkbox', checked: overlay.captionsOn(), click: item => overlay.setCaptions(item.checked) },
+      { label: 'Pen sounds', type: 'checkbox', checked: overlay.soundsOn(), click: item => overlay.setSounds(item.checked) },
       { type: 'separator' },
       { label: `MCP on ${url}`, enabled: false },
       { label: 'Copy "claude mcp add" command', click: () => clipboard.writeText(addCommand) },

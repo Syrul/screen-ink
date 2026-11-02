@@ -12,7 +12,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import os from 'node:os'
 import { z } from 'zod'
 import { checkFigure, checkMarks } from '../shared/check'
-import { markSchema, type MarkInput } from '../shared/marks'
+import { markSchema, target, type MarkInput } from '../shared/marks'
 import type { Capture } from './capture'
 import { CHECK, CLAUDE, EFFORT, INSTRUCTIONS, MODEL, NARRATE, TOOLS } from './config'
 import { describe } from './sense'
@@ -22,6 +22,12 @@ import * as voice from './voice'
 export const answerSchema = z.object({
   caption: z.string().max(400).describe('The answer in one or two short sentences, shown at the bottom of the screen.'),
   marks: z.array(markSchema).max(20).describe('Marks that point at what the caption talks about, drawn in order. Empty when nothing on screen helps.'),
+  next: target
+    .optional()
+    .describe(
+      'In a walkthrough, what the user clicks to finish the step you are showing. screen-ink waits for that click, then shows you ' +
+        'the screen again for the next step. Leave it out on the last step, and when the answer is not a walkthrough.',
+    ),
 })
 export type Answer = z.infer<typeof answerSchema>
 
@@ -32,6 +38,19 @@ const WEB = `
 When the answer turns on facts the screen doesn't show and that may have changed since you were trained (versions,
 prices, release notes, news, how a product works today), search the web first: one or two standard searches, then
 answer from what you found. Don't search for what the screenshot already tells you.`
+
+const MARKS = `
+Pick the mark that fits what you are saying: check and cross to judge options on screen, strike for what is wrong or
+out of date, connect to tie two things together; a note for a few sentences beside the thing they explain; a code card
+for a command or snippet to copy (highlight the line that matters); math for a formula; a plot, timeline or flow for
+numbers over time, a sequence of events, or how steps lead to each other; a photo from Wikimedia Commons, with its
+source, when seeing the real thing helps; and an action button when the user will want to copy a command, open a page
+or settings pane, or type something into the field in front. Buttons only do what they say, when clicked.`
+
+const WALKTHROUGH = `
+When the task takes several clicks (changing a setting, finding a menu), walk the user through it: show only the first
+step, the one thing to click, and set next to it. Once they click it you get the screen as it is then: show the next
+step the same way, and leave next out when the task is done. Say in the caption what the step does, briefly.`
 
 const FOLLOW_UPS = `
 The user may ask follow-up questions. Each comes with a new screenshot of the screen as it is now and its own list of
@@ -52,7 +71,7 @@ runs through it, and pendulums and bounces keep gravity's time. Turned parts (a 
 are extrudes, bent ones (a hose) are pipes, and a set of like parts is one part with copies; give parts real materials
 where it helps them read (steel, brass, glass). Then walk through it in two to four steps, each saying one thing while
 the figure shows it: cut the housing open, pull the parts apart, focus on the part being talked about, slow the motion
-or move in close. The figure's own say is a short opening; the steps carry the explanation.${/\bWebSearch\b/.test(TOOLS) ? WEB : ''}${FOLLOW_UPS}${narrate ? `\n${NARRATE} The caption stays the short written version.` : ''}`
+or move in close. The figure's own say is a short opening; the steps carry the explanation.${MARKS}${WALKTHROUGH}${/\bWebSearch\b/.test(TOOLS) ? WEB : ''}${FOLLOW_UPS}${narrate ? `\n${NARRATE} The caption stays the short written version.` : ''}`
 
 const TIMEOUT_MS = 120_000 // for one answer
 const FOLLOW_UP_MS = 120_000 // how long a conversation waits for the next question
@@ -291,7 +310,7 @@ export async function askClaude(question: string, shot: Capture, signal: AbortSi
       `Checking your figure found: ${problems.join(' ')} Answer again with the caption and the marks from that figure on, fixed.`,
       listener,
     )
-    return { caption: fixed.caption || first.caption, marks: [...kept, ...fixed.marks] }
+    return { caption: fixed.caption || first.caption, marks: [...kept, ...fixed.marks], next: fixed.next ?? first.next }
   } finally {
     signal.removeEventListener('abort', stop)
   }

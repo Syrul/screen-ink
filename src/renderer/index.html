@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data: blob:" />
     <title>screen-ink</title>
     <style>
       html,
@@ -53,6 +53,137 @@
       .card:hover .card-hint,
       .card.dragging .card-hint {
         opacity: 1;
+      }
+      /* Cards with words: notes, code, formulas, photos, and buttons. */
+      #cards > div > .ink-card,
+      #cards > div > .ink-action {
+        position: absolute;
+        transform-origin: center;
+      }
+      .ink-card {
+        max-width: 320px;
+        border-radius: 14px;
+        background: #fbf8f2;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26), 0 0 0 1px rgba(0, 0, 0, 0.06);
+        color: #30333a;
+        font: 500 13.5px/1.45 -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        overflow: hidden;
+      }
+      .ink-card-title {
+        display: inline-block;
+        margin: 10px 12px 0;
+        padding: 3px 11px;
+        border-radius: 11px;
+        color: #fff;
+        font-weight: 600;
+        font-size: 12.5px;
+      }
+      .note-text {
+        padding: 8px 14px 12px;
+        white-space: pre-wrap;
+      }
+      .ink-card.code {
+        max-width: 560px;
+        background: #1f2228;
+        color: #e6e6e6;
+      }
+      .code-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 7px 8px 7px 14px;
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .code-title {
+        flex: 1;
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 12px;
+      }
+      .code-copy,
+      .photo-source {
+        border: 0;
+        border-radius: 9px;
+        padding: 3px 10px;
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        font: 600 11.5px -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        cursor: pointer;
+      }
+      .code-copy:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .code-body {
+        padding: 8px 0 10px;
+        font: 12.5px/1.55 ui-monospace, 'SF Mono', Menlo, monospace;
+        overflow-x: auto;
+      }
+      .code-line {
+        display: flex;
+        padding: 0 14px 0 0;
+        white-space: pre;
+      }
+      .code-line.marked {
+        background: color-mix(in srgb, var(--mark) 26%, transparent);
+        box-shadow: inset 3px 0 var(--mark);
+      }
+      .code-no {
+        width: 34px;
+        padding-right: 12px;
+        text-align: right;
+        color: rgba(255, 255, 255, 0.3);
+        flex: none;
+      }
+      .code-src .c { color: #8b949e; }
+      .code-src .s { color: #a5d6a7; }
+      .code-src .n { color: #f2c48d; }
+      .code-src .k { color: #9ecbff; }
+      .ink-card.math {
+        max-width: 520px;
+        padding: 10px 20px;
+        font-size: 22px;
+      }
+      .ink-card.math math {
+        font-family: 'STIX Two Math', 'STIX Two Text', serif;
+      }
+      .ink-card.photo {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        max-width: 420px;
+      }
+      .ink-card.photo img {
+        display: block;
+        object-fit: contain;
+        background: #fff;
+      }
+      .photo-caption {
+        padding: 8px 12px 0;
+      }
+      .photo-source {
+        align-self: flex-start;
+        margin: 6px 8px 8px;
+        padding: 2px 6px;
+        background: transparent;
+        font-size: 11.5px;
+      }
+      button.photo-source:hover {
+        text-decoration: underline;
+      }
+      .ink-action {
+        border: 0;
+        border-radius: 15px;
+        padding: 7px 16px;
+        color: #fff;
+        font: 600 13px -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+        cursor: pointer;
+      }
+      .ink-action:hover {
+        filter: brightness(1.08);
+      }
+      .ink-action:disabled,
+      .code-copy:disabled {
+        cursor: default;
       }
       .card-tools {
         position: absolute;

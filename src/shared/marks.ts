@@ -6,7 +6,7 @@ import { z } from 'zod'
 const point = z.array(z.number()).length(2).describe('[x, y]')
 const box = z.array(z.number()).length(4).describe('[x, y, width, height]')
 const element = z.string().regex(/^e\d+$/).describe("The id of an element from the screenshot's list, like e12")
-const target = z.union([box, element]).describe('[x, y, width, height], or an element id (exact)')
+export const target = z.union([box, element]).describe('[x, y, width, height], or an element id (exact)')
 const spot = z.union([point, element]).describe('[x, y], or an element id (exact)')
 const color = z
   .string()
@@ -20,6 +20,16 @@ const say = z
   .optional()
   .describe('Words spoken aloud as this mark starts to draw, when the user has voice on; the next mark waits until they are said. A sentence or two of plain speech.')
 const side = z.enum(['above', 'below', 'left', 'right'])
+const markId = z
+  .string()
+  .max(24)
+  .optional()
+  .describe('A name for this mark: a later drawing replaces it by sending a mark with the same id, or takes it away with remove.')
+const near = {
+  box: target.optional().describe('What it is about: it sits beside this, never on it.'),
+  at: point.optional().describe('Or its top-left corner, on calm space.'),
+  side: side.optional().describe('Which side of the box. Default: right.'),
+}
 
 // ---- 3D figures: parts in the figure's own units (y up); the camera frames the whole figure.
 const vec3 = z.array(z.number()).length(3).describe('[x, y, z]')
@@ -158,10 +168,10 @@ const figureLabelSchema = z.object({
 })
 
 export const markSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('ring'), box: target, color, delay, say }).describe('A hand-drawn loop around a box.'),
+  z.object({ kind: z.literal('ring'), id: markId, box: target, color, delay, say }).describe('A hand-drawn loop around a box.'),
   z
     .object({
-      kind: z.literal('arrow'),
+      kind: z.literal('arrow'), id: markId,
       from: spot,
       to: spot,
       bend: z.number().min(-1).max(1).optional().describe('Curve: 0 straight, ±1 strongly bent.'),
@@ -172,7 +182,7 @@ export const markSchema = z.discriminatedUnion('kind', [
     .describe('An arrow whose tip touches `to`.'),
   z
     .object({
-      kind: z.literal('label'),
+      kind: z.literal('label'), id: markId,
       text: z.string().max(60),
       box: target.optional().describe('The thing being named; the pill sits beside it.'),
       at: point.optional().describe('Or a point the pill sits next to.'),
@@ -183,16 +193,16 @@ export const markSchema = z.discriminatedUnion('kind', [
     })
     .describe('A short name in a solid pill, placed beside a box or point, never on top of it.'),
   z
-    .object({ kind: z.literal('badge'), at: spot, n: z.union([z.number(), z.string().max(3)]), color, delay, say })
+    .object({ kind: z.literal('badge'), id: markId, at: spot, n: z.union([z.number(), z.string().max(3)]), color, delay, say })
     .describe('A numbered step badge centred on `at`.'),
   z
-    .object({ kind: z.literal('frame'), box: target, text: z.string().max(60).optional(), color, delay, say })
+    .object({ kind: z.literal('frame'), id: markId, box: target, text: z.string().max(60).optional(), color, delay, say })
     .describe('A dashed frame with a faint tint around a region, with an optional title pill.'),
-  z.object({ kind: z.literal('underline'), box: target, color, delay, say }).describe('A pen line under a box (usually text).'),
-  z.object({ kind: z.literal('highlight'), box: target, color, delay, say }).describe('A translucent marker stroke over a box of text.'),
+  z.object({ kind: z.literal('underline'), id: markId, box: target, color, delay, say }).describe('A pen line under a box (usually text).'),
+  z.object({ kind: z.literal('highlight'), id: markId, box: target, color, delay, say }).describe('A translucent marker stroke over a box of text.'),
   z
     .object({
-      kind: z.literal('text'),
+      kind: z.literal('text'), id: markId,
       at: point.describe('Where the first line starts (top-left).'),
       text: z.string().max(200),
       size: z.number().min(8).max(64).optional().describe('Font size in points. Default 20.'),
@@ -202,12 +212,114 @@ export const markSchema = z.discriminatedUnion('kind', [
     })
     .describe('Free handwritten words on calm space.'),
   z
-    .object({ kind: z.literal('line'), points: z.array(point).min(2).max(200), color, delay, say })
+    .object({ kind: z.literal('line'), id: markId, points: z.array(point).min(2).max(200), color, delay, say })
     .describe('A freehand pen line through the points.'),
-  z.object({ kind: z.literal('spotlight'), box: target, delay, say }).describe('Dims everything except the box.'),
+  z.object({ kind: z.literal('spotlight'), id: markId, box: target, delay, say }).describe('Dims everything except the box.'),
+  z.object({ kind: z.literal('check'), id: markId, at: spot, color, delay, say }).describe('A hand-drawn tick: right, done, or the one to pick. On an element it sits just left of it.'),
+  z.object({ kind: z.literal('cross'), id: markId, at: spot, color, delay, say }).describe('A hand-drawn cross: wrong, or not this one. On an element it sits just left of it.'),
+  z.object({ kind: z.literal('strike'), id: markId, box: target, color, delay, say }).describe('A pen line struck through a box of text: out of date, or not this.'),
+  z
+    .object({ kind: z.literal('connect'), id: markId, from: target, to: target, text: z.string().max(40).optional(), color, delay, say })
+    .describe('A curved line joining two things that go together, a dot at each end and an optional label in the middle.'),
+  z
+    .object({ kind: z.literal('note'), id: markId, ...near, title: z.string().max(60).optional(), text: z.string().max(400), color, delay, say })
+    .describe('A note card with a few sentences, on calm space beside what it explains.'),
   z
     .object({
-      kind: z.literal('figure'),
+      kind: z.literal('code'),
+      id: markId,
+      ...near,
+      code: z.string().max(1500),
+      title: z.string().max(60).optional().describe('A file name or what it is ("Terminal", "settings.json").'),
+      highlight: z.array(z.number().int().min(1)).max(20).optional().describe('Line numbers, from 1, to highlight.'),
+      color,
+      delay,
+      say,
+    })
+    .describe('A code card: monospace with line numbers, chosen lines highlighted, and a Copy button the user can click.'),
+  z
+    .object({ kind: z.literal('math'), id: markId, ...near, tex: z.string().max(400).describe('LaTeX, without $ signs.'), color, delay, say })
+    .describe('A formula, typeset.'),
+  z
+    .object({
+      kind: z.literal('plot'),
+      id: markId,
+      box: box.describe('Where the chart stands: calm space, at least about 300×200.'),
+      title: z.string().max(60).optional(),
+      x: z.string().max(30).optional().describe("The x axis's name."),
+      y: z.string().max(30).optional().describe("The y axis's name."),
+      series: z
+        .array(z.object({ name: z.string().max(30).optional(), points: z.array(point).min(2).max(200).describe('[x, y] in the data\'s own units.'), color }))
+        .max(4)
+        .optional()
+        .describe('Lines through points.'),
+      bars: z.array(z.object({ label: z.string().max(20), value: z.number() })).max(16).optional().describe('Or bars.'),
+      color,
+      delay,
+      say,
+    })
+    .describe('A small hand-drawn chart on a card: lines through points, or bars. Axes are scaled to the data.'),
+  z
+    .object({
+      kind: z.literal('timeline'),
+      id: markId,
+      box: box.describe('Where it stands: calm space, wide.'),
+      title: z.string().max(60).optional(),
+      events: z.array(z.object({ when: z.string().max(20), text: z.string().max(60) })).min(2).max(10),
+      color,
+      delay,
+      say,
+    })
+    .describe('Events in order along a line, each with when and what.'),
+  z
+    .object({
+      kind: z.literal('flow'),
+      id: markId,
+      box: box.describe('Where it stands: calm space.'),
+      title: z.string().max(60).optional(),
+      nodes: z
+        .array(z.object({ id: z.string().max(24), text: z.string().max(40), shape: z.enum(['box', 'round', 'diamond']).optional().describe('box: a step (default); round: start or end; diamond: a choice.') }))
+        .min(2)
+        .max(16),
+      edges: z.array(z.object({ from: z.string(), to: z.string(), text: z.string().max(24).optional() })).max(24),
+      direction: z.enum(['down', 'right']).optional().describe('Default: down.'),
+      color,
+      delay,
+      say,
+    })
+    .describe('A flowchart, laid out for you: steps, choices and arrows between them.'),
+  z
+    .object({
+      kind: z.literal('photo'),
+      id: markId,
+      box: box.describe('Where it stands: calm space.'),
+      url: z.string().max(600).describe('An https address of the image file itself, on upload.wikimedia.org (Wikimedia Commons), from a page you found.'),
+      source: z.string().max(200).describe('Where it comes from (the page or site), shown under it.'),
+      caption: z.string().max(120).optional(),
+      color,
+      delay,
+      say,
+    })
+    .describe('A photo from the web on a card, with its source. Use one that shows what words cannot.'),
+  z
+    .object({
+      kind: z.literal('action'),
+      id: markId,
+      ...near,
+      text: z.string().max(30).describe('The button\'s words, like "Copy command" or "Open Privacy settings".'),
+      do: z.enum(['copy', 'open', 'type']),
+      value: z
+        .string()
+        .max(2000)
+        .describe('copy: the text; open: an https address, or a System Settings pane (x-apple.systempreferences:…); type: the text, typed into the app in front (Return is never pressed).'),
+      color,
+      delay,
+      say,
+    })
+    .describe('A button the user can click to copy text, open a page or settings pane, or type text into the app in front. Nothing happens unless they click it.'),
+  z
+    .object({
+      kind: z.literal('figure'), id: markId,
       box: box.describe("Where the figure's card stands: calm space, at least about 320×260."),
       title: z.string().max(60).optional(),
       parts: z.array(partSchema).min(1).max(40).describe('Built in this order, one by one.'),
@@ -241,7 +353,8 @@ export const markSchema = z.discriminatedUnion('kind', [
 ])
 
 export const drawShape = {
-  marks: z.array(markSchema).min(1).max(40).describe('Drawn in order, one after another.'),
+  marks: z.array(markSchema).max(40).describe('Drawn in order, one after another.'),
+  remove: z.array(z.string()).max(40).optional().describe('Ids of marks to take away first (with append).'),
   caption: z.string().max(400).optional().describe('One or two sentences shown at the bottom of the screen.'),
   append: z.boolean().optional().describe('Add to the current drawing instead of replacing it.'),
   fadeAfter: z.number().min(0).max(600).optional().describe('Seconds after drawing ends before it fades away. 0 or omitted: stays until cleared.'),
@@ -264,6 +377,10 @@ export interface DrawPayload {
   fadeAfter?: number
   /** Whether to read the caption out. By default it is read when no mark has words of its own. */
   speakCaption?: boolean
+  /** Ids of marks to take away. */
+  remove?: string[]
+  /** Whether the pen makes its sounds. */
+  sounds?: boolean
   ppu: number
   ink: string
 }

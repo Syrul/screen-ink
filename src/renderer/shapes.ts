@@ -115,6 +115,96 @@ export function dashes(r: Rect, dash = 11, gap = 7, radius = 10): Point[][] {
   return out
 }
 
+/** Points every `step` along a polyline, so a pen can reveal it smoothly. */
+/** The polyline with points every `step` along it, so the pen keeps its corners. */
+export function dense(pts: Point[], step = 4): Point[] {
+  const out: Point[] = [pts[0]]
+  for (let i = 1; i < pts.length; i++) {
+    const [a, b] = [pts[i - 1], pts[i]]
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step))
+    for (let k = 1; k <= n; k++) out.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n])
+  }
+  return out
+}
+
+/** A tick centred on `c`: a short stroke down, then a long one up. */
+export function tick([x, y]: Point, size = 24): Point[] {
+  const s = size / 24
+  return dense([[x - 10 * s, y - 1 * s + jitter(1)], [x - 3 * s, y + 8 * s], [x + 3 * s, y + 1 * s], [x + 12 * s, y - 12 * s + jitter(1)]])
+}
+
+/** A cross centred on `c`, as two strokes. */
+export function cross([x, y]: Point, size = 20): Point[][] {
+  const h = size / 2
+  return [
+    dense([[x - h + jitter(1), y - h], [x + h, y + h + jitter(1)]]),
+    dense([[x + h + jitter(1), y - h], [x - h, y + h + jitter(1)]]),
+  ]
+}
+
+/** A line struck through the middle of a box, a little past each end. */
+export function strike(r: Rect): Point[] {
+  const y = r.y + r.h * 0.55
+  const n = Math.max(6, Math.round(r.w / 10))
+  return Array.from({ length: n + 1 }, (_, i): Point => [r.x - 4 + ((r.w + 8) * i) / n, y - (i / n) * 2 + jitter(0.7)])
+}
+
+/** Where a line between two boxes leaves `a` toward `b`: the middle of the facing side, and that side's outward direction. */
+function facing(a: Rect, b: Rect): { at: Point; out: Point } {
+  const dx = b.x + b.w / 2 - (a.x + a.w / 2), dy = b.y + b.h / 2 - (a.y + a.h / 2)
+  if (Math.abs(dx) * (a.h + b.h) >= Math.abs(dy) * (a.w + b.w))
+    return dx > 0 ? { at: [a.x + a.w + 6, a.y + a.h / 2], out: [1, 0] } : { at: [a.x - 6, a.y + a.h / 2], out: [-1, 0] }
+  return dy > 0 ? { at: [a.x + a.w / 2, a.y + a.h + 6], out: [0, 1] } : { at: [a.x + a.w / 2, a.y - 6], out: [0, -1] }
+}
+
+/** A smooth S-curve from the side of `a` facing `b` to the side of `b` facing `a`. */
+export function connector(a: Rect, b: Rect): Point[] {
+  const p = facing(a, b), q = facing(b, a)
+  const reach = Math.max(30, Math.hypot(q.at[0] - p.at[0], q.at[1] - p.at[1]) * 0.4)
+  const c1: Point = [p.at[0] + p.out[0] * reach, p.at[1] + p.out[1] * reach]
+  const c2: Point = [q.at[0] + q.out[0] * reach, q.at[1] + q.out[1] * reach]
+  const n = 40
+  return Array.from({ length: n + 1 }, (_, i): Point => {
+    const t = i / n, u = 1 - t
+    return [
+      u ** 3 * p.at[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t ** 3 * q.at[0],
+      u ** 3 * p.at[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t ** 3 * q.at[1],
+    ]
+  })
+}
+
+/** A hand-drawn rounded box, starting top-left and closing a little past where it began. */
+export function box(r: Rect, radius = 8): Point[] {
+  const rad = Math.min(radius, r.w / 2, r.h / 2)
+  const pts: Point[] = []
+  const corners: [number, number, number][] = [
+    [r.x + r.w - rad, r.y + rad, -Math.PI / 2],
+    [r.x + r.w - rad, r.y + r.h - rad, 0],
+    [r.x + rad, r.y + r.h - rad, Math.PI / 2],
+    [r.x + rad, r.y + rad, Math.PI],
+  ]
+  pts.push([r.x + rad, r.y + jitter(0.8)])
+  for (const [cx, cy, a0] of corners)
+    for (let i = 0; i <= 5; i++) pts.push([cx + Math.cos(a0 + (Math.PI / 2) * (i / 5)) * rad, cy + Math.sin(a0 + (Math.PI / 2) * (i / 5)) * rad])
+  pts.push([r.x + rad + 6, r.y + jitter(0.8)])
+  return dense(pts, 6)
+}
+
+/** A hand-drawn diamond filling a box. */
+export function diamond(r: Rect): Point[] {
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2
+  return dense([[cx, r.y], [r.x + r.w, cy], [cx, r.y + r.h], [r.x, cy], [cx + 3, r.y + 1]], 6)
+}
+
+/** Where the line from a box's centre toward `p` leaves the box, `gap` further out. */
+export function exit(r: Rect, p: Point, gap = 4): Point {
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2
+  const dx = p[0] - cx, dy = p[1] - cy
+  const t = Math.min(dx ? r.w / 2 / Math.abs(dx) : Infinity, dy ? r.h / 2 / Math.abs(dy) : Infinity)
+  const len = Math.hypot(dx, dy) || 1
+  return [cx + dx * t + (dx / len) * gap, cy + dy * t + (dy / len) * gap]
+}
+
 /** An SVG path for a perfect-freehand outline polygon. */
 export function outlinePath(outline: number[][]): string {
   if (outline.length < 4) return ''

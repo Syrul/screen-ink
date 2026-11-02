@@ -30,6 +30,7 @@ const MAX_ELEMENTS = 300
 let helper: ChildProcess | null = null
 let lastId = 0
 const waiting = new Map<number, (reply: Reply | null) => void>()
+const clickers = new Set<(at: Point) => void>()
 let asked = false
 
 /** Starts the helper, early: it learns which app is in front by watching the user switch apps. */
@@ -43,6 +44,8 @@ export function start(): void {
     } catch {
       return
     }
+    const click = (reply as { click?: Point }).click
+    if (click) for (const fn of clickers) fn(click)
     waiting.get(reply.id)?.(reply)
     waiting.delete(reply.id)
   })
@@ -56,31 +59,60 @@ export function start(): void {
   child.stdin!.on('error', () => {})
 }
 
-/** Lists what is on `display`, given its screenshot (`jpeg`, any size) and the units marks use (`width`, `height`, `ppu`). */
-export async function sense(display: Display, jpeg: Buffer, width: number, height: number, ppu: number): Promise<Element[]> {
+/** Sends the helper one request and waits for its reply, or null if there is no helper or it takes too long. */
+function request(body: Record<string, unknown>, waitMs = WAIT_MS): Promise<Reply | null> {
   start()
   const child = helper
-  if (!child) return []
+  if (!child) return Promise.resolve(null)
   const id = ++lastId
-  const { x, y, width: w, height: h } = display.bounds
-  const reply = await new Promise<Reply | null>(resolve => {
+  return new Promise<Reply | null>(resolve => {
     const timer = setTimeout(() => {
       waiting.delete(id)
       resolve(null)
-    }, WAIT_MS)
+    }, waitMs)
     waiting.set(id, r => {
       clearTimeout(timer)
       resolve(r)
     })
-    child.stdin!.write(JSON.stringify({ id, jpeg: jpeg.toString('base64'), display: [x, y, w, h] }) + '\n')
+    child.stdin!.write(JSON.stringify({ id, ...body }) + '\n')
   })
-  if (!reply) return []
-  if (!reply.trusted && !asked) {
-    asked = true
-    console.log('screen-ink: allow Accessibility (System Settings → Privacy & Security) so marks land exactly on buttons and menus.')
-    systemPreferences.isTrustedAccessibilityClient(true)
+}
+
+function askForAccess(reply: Reply | null): void {
+  if (!reply || reply.trusted || asked) return
+  asked = true
+  console.log('screen-ink: allow Accessibility (System Settings → Privacy & Security) so marks land exactly on buttons and menus.')
+  systemPreferences.isTrustedAccessibilityClient(true)
+}
+
+/** Lists what is on `display`, given its screenshot (`jpeg`, any size) and the units marks use (`width`, `height`, `ppu`). */
+export async function sense(display: Display, jpeg: Buffer, width: number, height: number, ppu: number): Promise<Element[]> {
+  const { x, y, width: w, height: h } = display.bounds
+  const reply = await request({ jpeg: jpeg.toString('base64'), display: [x, y, w, h] })
+  askForAccess(reply)
+  return reply ? merge(reply, display.bounds, width, height, ppu) : []
+}
+
+/** Types `text` into the app in front, as if from the keyboard. Resolves whether it could (it needs Accessibility). */
+export async function type(text: string): Promise<boolean> {
+  const reply = await request({ type: text }, 10_000)
+  askForAccess(reply)
+  return !!reply?.trusted
+}
+
+/**
+ * Calls `fn` with every left click anywhere (global points, top-left origin) until the returned function is called.
+ * Resolves null when clicks can't be watched (no helper, or no Accessibility access).
+ */
+export async function watchClicks(fn: (at: Point) => void): Promise<(() => void) | null> {
+  const reply = (await request({ watch: true })) as (Reply & { watching?: boolean }) | null
+  askForAccess(reply)
+  if (!reply?.watching) return null
+  clickers.add(fn)
+  return () => {
+    clickers.delete(fn)
+    if (!clickers.size) void request({ watch: false })
   }
-  return merge(reply, display.bounds, width, height, ppu)
 }
 
 const KINDS: Record<string, string> = {
@@ -189,7 +221,12 @@ export function place(marks: MarkInput[], elements: Element[], ppu: number): { m
       const box = look(m.box)
       return box ? [{ ...m, box } as Mark] : []
     }
-    if (m.kind === 'badge' && typeof m.at === 'string') {
+    if (m.kind === 'connect') {
+      const from = typeof m.from === 'string' ? look(m.from) : m.from
+      const to = typeof m.to === 'string' ? look(m.to) : m.to
+      return from && to ? [{ ...m, from, to } as Mark] : []
+    }
+    if ((m.kind === 'badge' || m.kind === 'check' || m.kind === 'cross') && typeof m.at === 'string') {
       const b = look(m.at)
       if (!b) return []
       const r = BADGE_PT / ppu

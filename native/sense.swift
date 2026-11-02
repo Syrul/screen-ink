@@ -4,6 +4,9 @@
 //   {"id": 1, "jpeg": "<base64>", "display": [x, y, width, height]}
 //   → {"id": 1, "trusted": true, "app": "Safari", "ax": [{"role", "subrole", "label", "frame"}], "ocr": [{"text", "box", "confidence"}]}
 //
+//   {"id": 2, "type": "text"} → {"id": 2, "trusted": true}   types the text into the app in front
+//   {"id": 3, "watch": true}   → {"id": 3, "trusted": true, "watching": true}, then {"click": [x, y]} per click
+//
 // `ax` is the frontmost app's controls (its menu bar and the windows on that display) from the Accessibility API,
 // with frames in global screen points, top-left origin (Electron's coordinates). `ocr` is every line of text Vision
 // reads in the image, with boxes as fractions of it. The frontmost app is the last one the user brought forward
@@ -222,10 +225,66 @@ final class Gray {
   }
 }
 
+// ---- Typing, for a button the user clicked
+
+/** Types `text` into the app in front, a few characters per key event. Needs Accessibility. */
+func type(_ text: String) {
+  let units = Array(text.utf16)
+  var i = 0
+  while i < units.count {
+    let chunk = Array(units[i..<min(i + 16, units.count)])
+    for down in [true, false] {
+      guard let e = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down) else { continue }
+      e.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
+      e.post(tap: .cghidEventTap)
+    }
+    i += 16
+    usleep(4000)
+  }
+}
+
+// ---- Watching clicks, for walkthroughs: each left click anywhere, in global points, top-left origin.
+
+var clicks: CFMachPort?
+
+func watch(_ on: Bool) -> Bool {
+  if !on {
+    if let tap = clicks { CGEvent.tapEnable(tap: tap, enable: false) }
+    return false
+  }
+  if let tap = clicks {
+    CGEvent.tapEnable(tap: tap, enable: true)
+    return true
+  }
+  let mask = CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
+  guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly, eventsOfInterest: mask,
+                                    callback: { _, kind, event, _ in
+    if kind == .tapDisabledByTimeout || kind == .tapDisabledByUserInput {
+      if let tap = clicks { CGEvent.tapEnable(tap: tap, enable: true) }
+    } else if kind == .leftMouseDown {
+      let p = event.location
+      print("{\"click\": [\(p.x), \(p.y)]}")
+    }
+    return Unmanaged.passUnretained(event)
+  }, userInfo: nil) else { return false }
+  clicks = tap
+  CFRunLoopAddSource(CFRunLoopGetMain(), CFMachPortCreateRunLoopSource(nil, tap, 0), .commonModes)
+  CGEvent.tapEnable(tap: tap, enable: true)
+  return true
+}
+
 // ---- Requests
 
 func answer(_ request: [String: Any]) -> [String: Any] {
   var reply: [String: Any] = ["id": request["id"] ?? NSNull(), "trusted": AXIsProcessTrusted()]
+  if let text = request["type"] as? String {
+    if AXIsProcessTrusted() { type(text) }
+    return reply
+  }
+  if let on = request["watch"] as? Bool {
+    reply["watching"] = DispatchQueue.main.sync { watch(on) }
+    return reply
+  }
   let d = (request["display"] as? [Double]) ?? []
   let display = d.count == 4 ? CGRect(x: d[0], y: d[1], width: d[2], height: d[3]) : .infinite
   let app = DispatchQueue.main.sync { lastApp }
