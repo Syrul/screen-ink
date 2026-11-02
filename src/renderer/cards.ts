@@ -10,7 +10,7 @@ import { tap } from './sounds'
 
 type Of<K extends Mark['kind']> = Extract<Mark, { kind: K }>
 type Near = { box?: number[]; at?: number[]; side?: 'above' | 'below' | 'left' | 'right' }
-export type Act = 'copy' | 'open' | 'type' | 'agent'
+export type Act = 'copy' | 'open' | 'type' | 'agent' | 'walk'
 /** What came of a click: done as asked, copied instead (text with line breaks isn't typed), or not at all. */
 export type Outcome = 'done' | 'copied' | null
 
@@ -74,8 +74,15 @@ function button(text: string, what: Act, value: string, hooks: CardHooks, classN
   const b = document.createElement('button')
   b.className = className
   b.textContent = text
-  b.title = { type: `Types: ${value}`, open: `Opens ${value}`, copy: `Copies: ${value}`, agent: `Asks Claude Code, in a new Terminal window: ${value}` }[what]
-  const done = { copy: 'Copied', open: 'Opened', type: 'Typed', agent: 'Started' }[what]
+  const stop = value === 'stop'
+  b.title = {
+    type: `Types: ${value}`,
+    open: `Opens ${value}`,
+    copy: `Copies: ${value}`,
+    agent: `Asks Claude Code, in a new Terminal window: ${value}`,
+    walk: stop ? 'Stops clicking for you' : "screen-ink clicks each step itself, but leaves the ones that can't be undone to you. ⌃⌥Esc stops it.",
+  }[what]
+  const done = { copy: 'Copied', open: 'Opened', type: 'Typed', agent: 'Started', walk: stop ? 'Stopped' : 'On it' }[what]
   b.addEventListener('click', async () => {
     b.disabled = true
     const outcome = await hooks.act(what, value, folder).catch(() => null)

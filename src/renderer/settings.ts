@@ -167,7 +167,7 @@ $('key-save').addEventListener('click', async () => {
 // ---- Fields that save as they change
 
 const TEXT: (keyof Settings)[] = ['model', 'codexModel', 'claude', 'codex', 'hotkey']
-const CHECKS: (keyof Settings)[] = ['speak', 'captions', 'listen', 'sounds', 'memory']
+const CHECKS: (keyof Settings)[] = ['speak', 'captions', 'listen', 'sounds', 'doIt', 'memory']
 const SELECTS: (keyof Settings)[] = ['effort', 'check', 'voice']
 
 for (const k of TEXT) $(k).addEventListener('change', () => void save({ [k]: $(k).value.trim() }))

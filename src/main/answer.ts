@@ -14,6 +14,13 @@ export const answerSchema = z.object({
       'In a walkthrough, what the user clicks to finish the step you are showing. screen-ink waits for that click, then shows you ' +
         'the screen again for the next step. Leave it out on the last step, and when the answer is not a walkthrough.',
     ),
+  final: z
+    .boolean()
+    .optional()
+    .describe(
+      'In a walkthrough, true when clicking next sends, buys, pays, deletes, signs in or out, installs, grants access, or ' +
+        "otherwise can't be undone or reaches beyond this Mac. screen-ink never clicks such a step for the user.",
+    ),
   remember: z
     .string()
     .max(200)
@@ -48,7 +55,10 @@ say, when clicked.`
 const WALKTHROUGH = `
 When the task takes several clicks (changing a setting, finding a menu), walk the user through it: show only the first
 step, the one thing to click, and set next to it. Once they click it you get the screen as it is then: show the next
-step the same way, and leave next out when the task is done. Say in the caption what the step does, briefly.`
+step the same way, and leave next out when the task is done. Say in the caption what the step does, briefly.
+The user may let screen-ink click the steps for them: then you're told it pressed the step, and the steps go by
+without waiting, so keep each one short. Set final on a step whose click can't be taken back (it sends, buys,
+deletes, signs in, installs or grants access): screen-ink leaves that click to the user.`
 
 const FOLLOW_UPS = `
 The user may ask follow-up questions. Each comes with a new screenshot of the screen as it is now and its own list of

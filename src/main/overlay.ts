@@ -87,8 +87,12 @@ ipcMain.handle('ink:save', async (e, name: unknown, usdz: unknown) => {
 // web pages and System Settings open, and text with line breaks is copied rather than typed, so a button can't press
 // Return for anyone.
 const OPENABLE = /^(https:\/\/|x-apple\.systempreferences:)/
+let walking: ((start: boolean) => boolean) | null = null
+/** Who takes a walkthrough's "Do it for me" and "Stop" buttons. */
+export const onWalk = (fn: (start: boolean) => boolean) => void (walking = fn)
 ipcMain.handle('ink:act', async (e, what: unknown, value: unknown, folder: unknown): Promise<'done' | 'copied' | null> => {
   if (e.sender !== page() || typeof value !== 'string' || value.length > 2000) return null
+  if (what === 'walk') return walking?.(value !== 'stop') ? 'done' : null
   if (what === 'agent') return (await handoff.start(value, typeof folder === 'string' ? folder : undefined)) ? 'done' : null
   if (what === 'copy' || (what === 'type' && /[\r\n]/.test(value))) {
     clipboard.writeText(value)

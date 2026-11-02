@@ -121,6 +121,9 @@ function play(command: string, args: string[], input?: string): Promise<void> {
   })
 }
 
+/** Whether words are being said right now. */
+export const speaking = () => current !== null
+
 export function stop(): void {
   turn++
   current?.kill()

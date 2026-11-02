@@ -322,7 +322,7 @@ export const markSchema = z.discriminatedUnion('kind', [
       id: markId,
       ...near,
       text: z.string().max(30).describe('The button\'s words, like "Copy command" or "Open Privacy settings".'),
-      do: z.enum(['copy', 'open', 'type', 'agent']),
+      do: z.enum(['copy', 'open', 'type', 'agent', 'walk']).describe('walk is the button screen-ink adds to walkthroughs itself: never use it.'),
       value: z
         .string()
         .max(2000)

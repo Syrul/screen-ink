@@ -49,7 +49,7 @@ System Settings, and whether the model that answers is ready (`claude auth statu
 
 The rest are the model and effort, web search, checking 3D figures, the shortcut (any
 [accelerator](https://www.electronjs.org/docs/latest/api/accelerator) with a modifier), the ink colour, the
-voice, captions, listening and pen sounds, what it remembers about you, saved lessons, the `claude mcp add` command,
+voice, captions, listening and pen sounds, whether walkthroughs offer to do the clicking, what it remembers about you, saved lessons, the `claude mcp add` command,
 and the licence. Each change is saved as
 it is made, to `settings.json` in the app's data folder; an environment variable set at launch (below) wins over
 it for that run.
@@ -100,6 +100,17 @@ to left clicks while a step is up; it needs Accessibility), waits a moment for t
 fresh screenshot and asks for the next step, until Claude says it's done. A step nobody clicks goes after five
 minutes; the shortcut or ⌃⌥Esc stops the walk. Without Accessibility the first step is drawn as usual, and asking
 again carries on.
+
+**Do it for me.** Each walkthrough step has a *Do it for me* button. Click it and screen-ink does the steps
+itself: each is drawn and said first, held for at least a second, then pressed through the Accessibility API (the
+control's own press action, so the pointer doesn't move), and the next step follows without waiting. Fields are
+focused rather than pressed; where the app has no press action there (most web pages), it clicks the spot like a
+mouse and puts the pointer back. It never presses a password field, and it leaves a step to you when the answer marks
+it final (it sends, buys, deletes, signs in, installs or grants access) or when the button, menu item, link or
+checkbox says so (Send, Buy, Delete, Confirm, Install, Allow, OK and the like): the caption says *This one is yours*,
+and once you click it the next step offers the button again. *Stop*, the shortcut or ⌃⌥Esc hand the clicking back.
+It only presses what the app in front has at that spot, and only after you clicked the button; a step can't turn it
+on by itself. **Offer to do walkthroughs for me** in Settings (or `SCREEN_INK_DO_IT=off`) takes the button away.
 
 **Memory.** An answer can keep a short fact about you ("uses VS Code with the Vim keys", "is new to Blender"), so
 later conversations start out knowing it. Facts go in `memory.json` in the app's data folder (at most 40, the
@@ -355,6 +366,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
   `SCREEN_INK_CAPTIONS=off` (start without captions), `SCREEN_INK_LISTEN=off` (the bar only takes typing),
   `SCREEN_INK_CHECK` (`on` or `off`: deep mode, which checks figures and has Claude fix them before they are
   drawn; on by default at `high` effort and above), `SCREEN_INK_SOUNDS=off` (start without pen sounds),
+  `SCREEN_INK_DO_IT=off` (walkthroughs don't offer to click their steps),
   `SCREEN_INK_PHOTO_HOSTS` (hosts photos may come from, comma-separated; default `upload.wikimedia.org`), `SCREEN_INK_UPDATE_FEED` (the update feed), `SCREEN_INK_LICENCE_PUBLIC_KEY` (a PEM public key to check licences
   against in a development run; a packaged app only uses the built-in one), `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
 
@@ -378,7 +390,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/main/canvas.ts](src/main/canvas.ts) | The last screenshot's coordinate space, shared by MCP and the shortcut |
 | [src/main/capture.ts](src/main/capture.ts) | Screenshots and the unit → point scale |
 | [src/main/sense.ts](src/main/sense.ts) | Runs the helper, merges its controls and text into the element list, places marks that name ids |
-| [native/sense.swift](native/sense.swift) | The helper: Accessibility walk, Vision OCR, splitting lines by their ink; typing for buttons, watching clicks for walkthroughs |
+| [native/sense.swift](native/sense.swift) | The helper: Accessibility walk, Vision OCR, splitting lines by their ink; typing for buttons, watching clicks for walkthroughs, pressing steps for "Do it for me" |
 | [src/main/photos.ts](src/main/photos.ts) | Fetches photo marks' images, from allowed hosts only |
 | [src/main/overlay.ts](src/main/overlay.ts) | The transparent, click-through window |
 | [src/main/voice.ts](src/main/voice.ts) | Speaks each mark's words with Kokoro, or `say` until it's ready |
@@ -415,7 +427,7 @@ JIT, and notarize; until then macOS asks the user to open it from System Setting
 build counts as a new app for Screen Recording and Accessibility.
 
 **Windows and Linux.** The code runs there without the Mac-only parts: no element list (marks use coordinates),
-no typing buttons or walkthrough clicks, no `say` (Kokoro plays through PowerShell on Windows), and a tray icon
+no typing buttons, walkthrough clicks or Do it for me, no `say` (Kokoro plays through PowerShell on Windows), and a tray icon
 instead of the ✎ title. `claude` and `codex` must be `.exe`s on `PATH` or set by full path in Settings (npm's
 `.cmd` shims can't be run without a shell), and the plugin's token helper needs a POSIX shell, so on Windows
 set `SCREEN_INK_TOKEN` and use the `claude mcp add` command instead. `electron-builder --win` and `--linux` are

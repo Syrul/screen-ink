@@ -41,6 +41,8 @@ export interface Settings {
   licence: string
   /** Whether answers may keep short facts about the user for later conversations (memory.ts). */
   memory: boolean
+  /** Whether walkthroughs offer to click their steps for the user. */
+  doIt: boolean
 }
 
 const DEFAULTS: Settings = {
@@ -62,6 +64,7 @@ const DEFAULTS: Settings = {
   onboarded: false,
   licence: '',
   memory: true,
+  doIt: true,
 }
 
 // Electron accelerators: modifiers, then one key. A global shortcut needs a modifier, or it would take a key away.
@@ -120,6 +123,7 @@ function fromEnv(): Partial<Settings> {
   out.captions = off('SCREEN_INK_CAPTIONS')
   out.listen = off('SCREEN_INK_LISTEN')
   out.sounds = off('SCREEN_INK_SOUNDS')
+  out.doIt = off('SCREEN_INK_DO_IT')
   if (env.SCREEN_INK_COLOR) out.ink = env.SCREEN_INK_COLOR
   if (env.SCREEN_INK_HOTKEY) out.hotkey = env.SCREEN_INK_HOTKEY
   return clean(out, 'environment')

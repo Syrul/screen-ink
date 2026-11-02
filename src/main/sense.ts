@@ -101,6 +101,25 @@ export async function type(text: string): Promise<boolean> {
   return !!reply?.trusted
 }
 
+/** What the app in front has at a point, as the helper would press it: pressed, typed into, or clicked. */
+export interface Target {
+  role: string
+  subrole: string
+  label: string
+  how: 'press' | 'focus' | 'click'
+}
+
+/**
+ * Presses what the app in front has at `at` (global points, top-left origin), or with `dry` only says what it would
+ * press. Resolves the target, or why it won't. Needs Accessibility.
+ */
+export async function press(at: Point, dry = false): Promise<{ target?: Target; refused?: string }> {
+  const reply = (await request({ press: at, dry }, 5000)) as (Reply & { target?: Target; refused?: string }) | null
+  if (!reply) return { refused: "the helper didn't answer" }
+  if (!reply.trusted) return { refused: 'screen-ink needs Accessibility to press things' }
+  return { target: reply.target, refused: reply.refused }
+}
+
 /**
  * Calls `fn` with every left click anywhere (global points, top-left origin) until the returned function is called.
  * Resolves null when clicks can't be watched (no helper, or no Accessibility access).

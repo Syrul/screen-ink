@@ -6,6 +6,9 @@
 //
 //   {"id": 2, "type": "text"} → {"id": 2, "trusted": true}   types the text into the app in front
 //   {"id": 3, "watch": true}   → {"id": 3, "trusted": true, "watching": true}, then {"click": [x, y]} per click
+//   {"id": 4, "press": [x, y], "dry": true}
+//     → {"id": 4, "trusted": true, "target": {"role", "subrole", "label", "how"}} or {..., "refused": "why"}
+//     presses what the app in front has there (how: press, focus or click), or with dry only says what it would press
 //
 // `ax` is the frontmost app's controls (its menu bar and the windows on that display) from the Accessibility API,
 // with frames in global screen points, top-left origin (Electron's coordinates). `ocr` is every line of text Vision
@@ -243,6 +246,69 @@ func type(_ text: String) {
   }
 }
 
+// ---- Pressing, for a walkthrough the user lets screen-ink do
+
+// Roles that take typing: pressing one puts the cursor in it.
+let FIELDS: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
+
+func label(_ el: AXUIElement) -> String {
+  for attr in [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute, kAXValueAttribute] {
+    let s = text(copy(el, attr))
+    if !s.isEmpty { return s }
+  }
+  return ""
+}
+
+/// What the app in front has at `p` (global points, top-left origin), climbing from the innermost element to the
+/// first that can be pressed or typed in. Without one it is clicked where it is, like a mouse would, and the
+/// pointer put back. Password fields are refused. `dry` only says what it would press.
+func press(_ p: CGPoint, dry: Bool) -> [String: Any] {
+  guard let app = DispatchQueue.main.sync(execute: { lastApp }) else { return ["refused": "no app is in front"] }
+  let root = AXUIElementCreateApplication(app.processIdentifier)
+  AXUIElementSetMessagingTimeout(root, 1)
+  var hit: AXUIElement?
+  guard AXUIElementCopyElementAtPosition(root, Float(p.x), Float(p.y), &hit) == .success, let inner = hit else {
+    return ["refused": "\(app.localizedName ?? "the app in front") has nothing there"]
+  }
+  var el = inner
+  var how = "click"
+  var words = label(inner)
+  for _ in 0..<8 {
+    let role = (copy(el, kAXRoleAttribute) as? String) ?? ""
+    if (copy(el, kAXSubroleAttribute) as? String) == "AXSecureTextField" { return ["refused": "it is a password field"] }
+    if words.isEmpty { words = label(el) }
+    var names: CFArray?
+    let actions = AXUIElementCopyActionNames(el, &names) == .success ? (names as? [String]) ?? [] : []
+    if FIELDS.contains(role) { how = "focus"; break }
+    if actions.contains(kAXPressAction as String) { how = "press"; words = label(el).isEmpty ? words : label(el); break }
+    guard let up = copy(el, kAXParentAttribute) else { break }
+    el = up as! AXUIElement
+  }
+  if how == "click" { (el, words) = (inner, label(inner)) } // a container's words (a window's title) aren't the target's
+  let target: [String: Any] = [
+    "role": (copy(el, kAXRoleAttribute) as? String) ?? "", "subrole": (copy(el, kAXSubroleAttribute) as? String) ?? "",
+    "label": words, "how": how,
+  ]
+  if dry { return ["target": target] }
+  switch how {
+  case "press":
+    // A menu holds the call until it closes, so running out of time there still means it opened.
+    let r = AXUIElementPerformAction(el, kAXPressAction as CFString)
+    if r != .success && r != .cannotComplete { return ["target": target, "refused": "it wouldn't press (\(r.rawValue))"] }
+  case "focus":
+    AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+  default:
+    let back = CGEvent(source: nil)?.location
+    for kind in [CGEventType.leftMouseDown, .leftMouseUp] {
+      CGEvent(mouseEventSource: nil, mouseType: kind, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
+      usleep(30_000)
+    }
+    if let back { CGWarpMouseCursorPosition(back) }
+    CGAssociateMouseAndMouseCursorPosition(1)
+  }
+  return ["target": target]
+}
+
 // ---- Watching clicks, for walkthroughs: each left click anywhere, in global points, top-left origin.
 
 var clicks: CFMachPort?
@@ -280,6 +346,10 @@ func answer(_ request: [String: Any]) -> [String: Any] {
   if let text = request["type"] as? String {
     if AXIsProcessTrusted() { type(text) }
     return reply
+  }
+  if let at = request["press"] as? [Double], at.count == 2 {
+    if !AXIsProcessTrusted() { return reply }
+    return reply.merging(press(CGPoint(x: at[0], y: at[1]), dry: request["dry"] as? Bool ?? false)) { a, _ in a }
   }
   if let on = request["watch"] as? Bool {
     reply["watching"] = DispatchQueue.main.sync { watch(on) }
