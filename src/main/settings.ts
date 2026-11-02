@@ -43,6 +43,8 @@ export interface Settings {
   memory: boolean
   /** Whether walkthroughs offer to click their steps for the user. */
   doIt: boolean
+  /** Whether screen-ink's own pointer moves to what it shows and presses. */
+  cursor: boolean
 }
 
 const DEFAULTS: Settings = {
@@ -65,6 +67,7 @@ const DEFAULTS: Settings = {
   licence: '',
   memory: true,
   doIt: true,
+  cursor: true,
 }
 
 // Electron accelerators: modifiers, then one key. A global shortcut needs a modifier, or it would take a key away.
@@ -124,6 +127,7 @@ function fromEnv(): Partial<Settings> {
   out.listen = off('SCREEN_INK_LISTEN')
   out.sounds = off('SCREEN_INK_SOUNDS')
   out.doIt = off('SCREEN_INK_DO_IT')
+  out.cursor = off('SCREEN_INK_CURSOR')
   if (env.SCREEN_INK_COLOR) out.ink = env.SCREEN_INK_COLOR
   if (env.SCREEN_INK_HOTKEY) out.hotkey = env.SCREEN_INK_HOTKEY
   return clean(out, 'environment')

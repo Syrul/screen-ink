@@ -307,6 +307,63 @@
       #subtitle span.said {
         opacity: 1;
       }
+      /* screen-ink's own pointer (pointer.ts): its tip is 3px in from its corner, and it turns about the tip */
+      #pointer {
+        position: fixed;
+        left: 0;
+        top: 0;
+        z-index: 10;
+        pointer-events: none;
+        transform-origin: 3px 3px;
+        opacity: 0;
+        transition: opacity 0.25s;
+        --pointer: #ff5a36;
+      }
+      #pointer.show {
+        opacity: 1;
+      }
+      #pointer svg {
+        display: block;
+        overflow: visible;
+        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+      }
+      #pointer path {
+        fill: var(--pointer);
+        stroke: #fff;
+        stroke-width: 1.8;
+        stroke-linejoin: round;
+      }
+      .pointer-body {
+        transform-origin: 3px 3px;
+      }
+      .pointer-tag {
+        position: absolute;
+        left: 22px;
+        top: 26px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--pointer);
+        color: #fff;
+        font: 600 12px/1.25 -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        white-space: nowrap;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+        opacity: 0;
+        transform: translateY(-4px);
+        transition: opacity 0.2s, transform 0.2s;
+      }
+      #pointer.pressing .pointer-tag {
+        opacity: 1;
+        transform: none;
+      }
+      .pointer-ripple {
+        position: fixed;
+        z-index: 9;
+        width: 34px;
+        height: 34px;
+        border: 3px solid;
+        border-radius: 50%;
+        pointer-events: none;
+      }
       #caption {
         max-width: 100%;
         padding: 11px 18px;

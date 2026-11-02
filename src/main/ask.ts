@@ -257,6 +257,8 @@ async function pressFor(target: Box | string, final: boolean | undefined, shot: 
   await new Promise(r => setTimeout(r, SHOW_MS))
   while (voice.speaking() && Date.now() - started < SAID_MS && !abort.signal.aborted) await new Promise(r => setTimeout(r, 150))
   if (abort.signal.aborted || doing !== abort) return 'you took over'
+  await overlay.point([at[0] - x, at[1] - y], true, name || undefined) // screen-ink's pointer shows the press first
+  if (abort.signal.aborted || doing !== abort) return 'you took over'
   const done = await sense.press(at)
   return done.refused ?? { on: name }
 }

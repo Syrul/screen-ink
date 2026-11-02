@@ -403,6 +403,9 @@ export interface DrawPayload {
   remove?: string[]
   /** Whether the pen makes its sounds. */
   sounds?: boolean
+  /** Whether screen-ink's own pointer shows (default yes), and where the user's mouse is, in points on the display: it starts there. */
+  cursor?: boolean
+  mouse?: Point
   ppu: number
   ink: string
 }

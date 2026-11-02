@@ -133,7 +133,40 @@ export async function draw(display: Display, payload: DrawPayload): Promise<void
     w.setBounds(b)
   }
   w.showInactive()
-  w.webContents.send('ink:draw', { sounds: soundsOn(), ...payload })
+  // screen-ink's pointer starts from the user's mouse, when it is on this display.
+  const m = screen.getCursorScreenPoint()
+  const inside = m.x >= b.x && m.x < b.x + b.width && m.y >= b.y && m.y < b.y + b.height
+  const mouse = !payload.append && inside ? ([m.x - b.x, m.y - b.y] as [number, number]) : undefined
+  w.webContents.send('ink:draw', { sounds: soundsOn(), cursor: settings.get().cursor, mouse, ...payload })
+}
+
+// screen-ink's pointer moving to a spot, or pressing there, and the page saying it has.
+let lastPoint = 0
+const pointed = new Map<number, () => void>()
+ipcMain.on('ink:pointed', (e, id: unknown) => {
+  if (e.sender !== page() || typeof id !== 'number') return
+  pointed.get(id)?.()
+  pointed.delete(id)
+})
+
+/**
+ * Moves screen-ink's pointer to `at` (points on the display the overlay is on) and, with `press`, shows a press there
+ * named `label`. Resolves once it has, or straight away when the pointer is off or nothing is showing.
+ */
+export function point(at: [number, number], press = false, label?: string): Promise<void> {
+  const p = page()
+  if (!p || !win?.isVisible() || !settings.get().cursor) return Promise.resolve()
+  const id = ++lastPoint
+  return new Promise(resolve => {
+    const done = () => {
+      clearTimeout(timer)
+      pointed.delete(id)
+      resolve()
+    }
+    const timer = setTimeout(done, 2500)
+    pointed.set(id, done)
+    p.send('ink:point', { id, at, press, label })
+  })
 }
 
 export function clear(instant = false): void {

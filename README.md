@@ -49,7 +49,7 @@ System Settings, and whether the model that answers is ready (`claude auth statu
 
 The rest are the model and effort, web search, checking 3D figures, the shortcut (any
 [accelerator](https://www.electronjs.org/docs/latest/api/accelerator) with a modifier), the ink colour, the
-voice, captions, listening and pen sounds, whether walkthroughs offer to do the clicking, what it remembers about you, saved lessons, the `claude mcp add` command,
+voice, captions, listening and pen sounds, screen-ink's pointer, whether walkthroughs offer to do the clicking, what it remembers about you, saved lessons, the `claude mcp add` command,
 and the licence. Each change is saved as
 it is made, to `settings.json` in the app's data folder; an environment variable set at launch (below) wins over
 it for that run.
@@ -102,8 +102,9 @@ minutes; the shortcut or ⌃⌥Esc stops the walk. Without Accessibility the fir
 again carries on.
 
 **Do it for me.** Each walkthrough step has a *Do it for me* button. Click it and screen-ink does the steps
-itself: each is drawn and said first, held for at least a second, then pressed through the Accessibility API (the
-control's own press action, so the pointer doesn't move), and the next step follows without waiting. Fields are
+itself: each is drawn and said first, held for at least a second, then its pointer (below) moves there and shows the
+press, named, and the control is pressed through the Accessibility API (its own press action, so your mouse doesn't
+move), and the next step follows without waiting. Fields are
 focused rather than pressed; where the app has no press action there (most web pages), it clicks the spot like a
 mouse and puts the pointer back. It never presses a password field, and it leaves a step to you when the answer marks
 it final (it sends, buys, deletes, signs in, installs or grants access) or when the button, menu item, link or
@@ -159,6 +160,15 @@ Until it's on, the list has the text but not the controls. Ids belong to the scr
 an id the last screenshot didn't have is left out, and `draw` says so. The first time a new build of the
 helper runs, Vision spends up to a minute preparing its model, so the first screenshots may come without a
 list.
+
+## screen-ink's pointer
+
+A second pointer, in the ink's colour, does the pointing. When a drawing starts it leaves your mouse and moves to
+each mark as the pen draws it, in a gentle arc: over a target the way a hand hovers, to the end of an arrow or a
+stroke, beside a card rather than on it. A walkthrough step leaves it resting on what to click, and *Do it for me*
+shows each press with it: the pointer dips, a ring spreads from its tip, and a tag says what it is pressing. It is
+only drawn, so your own mouse stays yours. **Show screen-ink's pointer** in Settings (or `SCREEN_INK_CURSOR=off`)
+turns it off.
 
 ## Voice
 
@@ -352,7 +362,8 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 
 - `npm run preview` opens the overlay page in your browser, where it draws the demo over a mock window
   (2 for the pen demo, 3 for the 3D one, R to replay; `#3d` in the URL starts with 3D). The quickest way to
-  work on the look; `drawPreview(marks, caption, { append, remove })` in its console draws any marks.
+  work on the look; `drawPreview(marks, caption, { append, remove })` in its console draws any marks, and
+  `pressPreview([x, y], label)` shows the pointer's press.
 - `npm run typecheck`, `npm run build`.
 - Environment ([src/main/settings.ts](src/main/settings.ts), [src/main/config.ts](src/main/config.ts)), each
   winning over Settings for that run: `SCREEN_INK_PROVIDER` (`claude-code`, `api-key` or `codex`),
@@ -366,7 +377,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
   `SCREEN_INK_CAPTIONS=off` (start without captions), `SCREEN_INK_LISTEN=off` (the bar only takes typing),
   `SCREEN_INK_CHECK` (`on` or `off`: deep mode, which checks figures and has Claude fix them before they are
   drawn; on by default at `high` effort and above), `SCREEN_INK_SOUNDS=off` (start without pen sounds),
-  `SCREEN_INK_DO_IT=off` (walkthroughs don't offer to click their steps),
+  `SCREEN_INK_DO_IT=off` (walkthroughs don't offer to click their steps), `SCREEN_INK_CURSOR=off` (no screen-ink pointer),
   `SCREEN_INK_PHOTO_HOSTS` (hosts photos may come from, comma-separated; default `upload.wikimedia.org`), `SCREEN_INK_UPDATE_FEED` (the update feed), `SCREEN_INK_LICENCE_PUBLIC_KEY` (a PEM public key to check licences
   against in a development run; a packaged app only uses the built-in one), `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
 
@@ -401,6 +412,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/renderer/cards.ts](src/renderer/cards.ts) | Notes, checklists, code, formulas, photos and buttons, as HTML cards |
 | [src/renderer/charts.ts](src/renderer/charts.ts) | Plots, timelines and auto-laid-out flowcharts |
 | [src/renderer/sounds.ts](src/renderer/sounds.ts) | The pen's scratch and tap |
+| [src/renderer/pointer.ts](src/renderer/pointer.ts) | screen-ink's own pointer: where it goes for each mark, its glide and its press |
 | [src/renderer/figure.ts](src/renderer/figure.ts) | 3D figures: parts, motion, framing, labels, steps, replay and saving |
 | [src/shared/mechanism.ts](src/shared/mechanism.ts) | Works out linked parts: gear spacing and phase, speeds, cranks, belts, gravity's timing |
 | [src/shared/check.ts](src/shared/check.ts) | What's wrong with a figure, for the agent or for deep mode |

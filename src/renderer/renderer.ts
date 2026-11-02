@@ -12,6 +12,7 @@ import { clamp, el, now, UI_FONT, type Beat } from './common'
 import { disposeFigures, figureBeats } from './figure'
 import { beside, fadeIn, HAND_FONT, pen, pill, pop } from './ink'
 import { arrow, connector, cross, dashes, marker, outlinePath, ring, strike, tick as tickMark, underline, type Rect } from './shapes'
+import * as pointer from './pointer'
 import { setSounds } from './sounds'
 
 declare global {
@@ -25,6 +26,8 @@ declare global {
       ask(question: string): void
       save(name: string, usdz: Uint8Array): Promise<string | null>
       act(what: Act, value: string, folder?: string): Promise<Outcome>
+      onPoint(cb: (p: { id: number; at: Point; press?: boolean; label?: string }) => void): void
+      pointed(id: number): void
     }
   }
 }
@@ -333,6 +336,7 @@ function wipe(): void {
 
 function clearInk(instant: boolean): void {
   const gen = ++generation
+  pointer.hide(instant)
   if (instant) return wipe()
   fade(true)
   caption.classList.remove('show')
@@ -400,6 +404,7 @@ function drop(mark: { g: Element; host: HTMLElement }): void {
 function draw(p: DrawPayload): void {
   generation++
   if (!p.append) wipe()
+  pointer.enter(p.ink, p.cursor !== false, !p.append, p.mouse)
   setSounds(p.sounds ?? false)
   for (const id of p.remove ?? []) {
     const old = named.get(id)
@@ -423,6 +428,9 @@ function draw(p: DrawPayload): void {
     cards.append(host)
     cursor += m.delay ?? 0
     const from = cursor
+    // The pointer goes to each mark as it starts, but stays on a step's target while its own button pops in.
+    const aim = m.id === 'walk' ? null : pointer.aim(m, P, R)
+    if (aim) playing.push({ at: from, dur: 0, frame: () => {}, start: () => void pointer.glide(aim) })
     if (m.id) {
       // A mark with an id an earlier one had takes its place as it starts.
       const old = named.get(m.id)
@@ -466,6 +474,10 @@ if (window.inkBridge) {
   window.inkBridge.onDraw(draw)
   window.inkBridge.onClear(o => clearInk(o.instant))
   window.inkBridge.onSaying(s => showSaying(s.text, s.seconds))
+  window.inkBridge.onPoint(async p => {
+    await (p.press ? pointer.press(p.at, p.label) : pointer.glide(p.at))
+    window.inkBridge!.pointed(p.id)
+  })
   document.addEventListener('mousemove', trackPointer)
 } else {
   document.body.classList.add('preview')
@@ -481,10 +493,12 @@ if (window.inkBridge) {
     figureDemo = figure
     run()
   }
-  // For trying a drawing out from the console: drawPreview(marks, caption, { append, remove, … }).
+  // For trying a drawing out from the console: drawPreview(marks, caption, { append, remove, … }), and the pointer's
+  // press: pressPreview([x, y], 'View').
   Object.assign(window, {
     drawPreview: (marks: Mark[], text?: string, more: Partial<DrawPayload> = {}) =>
       draw({ marks, caption: text, ppu: innerWidth / DEMO_SIZE.width, ink: '#FF5A36', ...more }),
+    pressPreview: (at: Point, label?: string) => pointer.press(at, label),
   })
   addEventListener('resize', run)
   addEventListener('keydown', e => (e.key === 'r' ? run() : e.key === '3' ? pick(true)() : e.key === '2' ? pick(false)() : null))

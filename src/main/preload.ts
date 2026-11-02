@@ -1,5 +1,6 @@
 // The only bridge into the overlay page: drawings in, words out to be spoken and when they are, whether the mouse
-// is over a card, questions about a figure's parts, figures saved as 3D models, and the buttons the user clicks.
+// is over a card, questions about a figure's parts, figures saved as 3D models, the buttons the user clicks, and
+// where screen-ink's own pointer goes and presses.
 import { contextBridge, ipcRenderer } from 'electron'
 import type { DrawPayload } from '../shared/marks'
 
@@ -11,5 +12,8 @@ contextBridge.exposeInMainWorld('inkBridge', {
   ask: (question: string) => ipcRenderer.send('ink:ask', question),
   save: (name: string, usdz: Uint8Array): Promise<string | null> => ipcRenderer.invoke('ink:save', name, usdz),
   act: (what: string, value: string, folder?: string): Promise<'done' | 'copied' | null> => ipcRenderer.invoke('ink:act', what, value, folder),
+  onPoint: (cb: (p: { id: number; at: [number, number]; press?: boolean; label?: string }) => void) =>
+    ipcRenderer.on('ink:point', (_e, p: { id: number; at: [number, number]; press?: boolean; label?: string }) => cb(p)),
+  pointed: (id: number) => ipcRenderer.send('ink:pointed', id),
   onSaying: (cb: (s: { text: string; seconds: number }) => void) => ipcRenderer.on('ink:saying', (_e, s: { text: string; seconds: number }) => cb(s)),
 })
