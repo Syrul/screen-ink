@@ -5,8 +5,8 @@ import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { speaksCaption, words } from '../shared/caption'
 import type { DrawPayload } from '../shared/marks'
-import { CAPTIONS, SOUNDS } from './config'
 import * as sense from './sense'
+import * as settings from './settings'
 import * as voice from './voice'
 
 const FIRST_WORDS_WAIT_MS = 1500 // the most a drawing waits for its first words to be ready
@@ -55,24 +55,17 @@ ipcMain.on('ink:pointer', (e, over: unknown) => {
 /** The overlay page, to check who is talking. */
 export const page = () => (win && !win.isDestroyed() ? win.webContents : null)
 
-let captions = CAPTIONS
-export const captionsOn = () => captions
-export function setCaptions(value: boolean): void {
-  captions = value
-}
-
-let sounds = SOUNDS
-export const soundsOn = () => sounds
-export function setSounds(value: boolean): void {
-  sounds = value
-}
+export const captionsOn = () => settings.get().captions
+export const setCaptions = (value: boolean) => settings.set({ captions: value })
+export const soundsOn = () => settings.get().sounds
+export const setSounds = (value: boolean) => settings.set({ sounds: value })
 
 // The page asks for each mark's words as it draws; the answer comes once they are said. Meanwhile it is told when
 // they start and how long they take, to caption them.
 ipcMain.handle('ink:speak', (e, text: unknown) => {
   if (!win || win.isDestroyed() || e.sender !== win.webContents || typeof text !== 'string') return
   const page = win.webContents
-  return voice.speak(text, seconds => captions && !page.isDestroyed() && page.send('ink:saying', { text, seconds }))
+  return voice.speak(text, seconds => captionsOn() && !page.isDestroyed() && page.send('ink:saying', { text, seconds }))
 })
 
 // A figure saved as a 3D model goes in Downloads, shown in Finder.
@@ -124,7 +117,7 @@ export async function draw(display: Display, payload: DrawPayload): Promise<void
     w.setBounds(b)
   }
   w.showInactive()
-  w.webContents.send('ink:draw', { sounds, ...payload })
+  w.webContents.send('ink:draw', { sounds: soundsOn(), ...payload })
 }
 
 export function clear(instant = false): void {

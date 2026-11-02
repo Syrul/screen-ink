@@ -1,8 +1,9 @@
-// Asks the local `claude` CLI about a screenshot, on whatever account it is signed into. --safe-mode skips the
-// user's hooks, CLAUDE.md, skills and MCP servers (fast, and nothing of theirs leaks in) but keeps their login;
-// --json-schema makes the answer arrive as a validated drawing. The built-in tools in TOOLS (web search by default)
-// stay on and are pre-approved, since nobody is there to answer a permission prompt. With voice on, the answer is
-// narrated too.
+// Asks a model about a screenshot. By default that's the local `claude` CLI on whatever account it is signed into:
+// --safe-mode skips the user's hooks, CLAUDE.md, skills and MCP servers (fast, and nothing of theirs leaks in) but
+// keeps their login. With an API key it runs with --bare instead, which reads no login at all and bills the key.
+// --json-schema makes the answer arrive as a validated drawing. The built-in tools in the settings (web search by
+// default) stay on and are pre-approved, since nobody is there to answer a permission prompt. With voice on, the
+// answer is narrated too. Codex can answer instead (codex.ts).
 //
 // One conversation is one `claude` process. It starts when the prompt bar opens, so it is ready by the time the
 // question is, and waits a while after each answer: a question asked meanwhile continues the conversation ("and
@@ -10,92 +11,20 @@
 // drawing starts while the rest is still being written. Cutting in interrupts the answer, not the conversation.
 import { spawn, type ChildProcess } from 'node:child_process'
 import os from 'node:os'
-import { z } from 'zod'
 import { checkFigure, checkMarks } from '../shared/check'
-import { markSchema, target, type MarkInput } from '../shared/marks'
+import { markSchema } from '../shared/marks'
+import {
+  ANSWER_JSON_SCHEMA, answerSchema, FOLLOW_UP_MS, INTERRUPT_MS, step, system, TIMEOUT_MS, UNUSED_MS,
+  type Answer, type Engine, type Listener,
+} from './answer'
 import type { Capture } from './capture'
-import { CHECK, CLAUDE, EFFORT, INSTRUCTIONS, MODEL, NARRATE, TOOLS } from './config'
+import { Codex } from './codex'
 import { describe } from './sense'
+import * as settings from './settings'
 import { AnswerStream } from './stream'
 import * as voice from './voice'
 
-export const answerSchema = z.object({
-  caption: z.string().max(400).describe('The answer in one or two short sentences, shown at the bottom of the screen.'),
-  marks: z.array(markSchema).max(20).describe('Marks that point at what the caption talks about, drawn in order. Empty when nothing on screen helps.'),
-  next: target
-    .optional()
-    .describe(
-      'In a walkthrough, what the user clicks to finish the step you are showing. screen-ink waits for that click, then shows you ' +
-        'the screen again for the next step. Leave it out on the last step, and when the answer is not a walkthrough.',
-    ),
-})
-export type Answer = z.infer<typeof answerSchema>
-
-// Claude Code validates --json-schema with draft-07 and rejects zod's default 2020-12 `$schema`.
-const { $schema: _, ...ANSWER_JSON_SCHEMA } = z.toJSONSchema(answerSchema, { target: 'draft-7' })
-
-const WEB = `
-When the answer turns on facts the screen doesn't show and that may have changed since you were trained (versions,
-prices, release notes, news, how a product works today), search the web first: one or two standard searches, then
-answer from what you found. Don't search for what the screenshot already tells you.`
-
-const MARKS = `
-Pick the mark that fits what you are saying: check and cross to judge options on screen, strike for what is wrong or
-out of date, connect to tie two things together; a note for a few sentences beside the thing they explain; a code card
-for a command or snippet to copy (highlight the line that matters); math for a formula; a plot, timeline or flow for
-numbers over time, a sequence of events, or how steps lead to each other; a photo from Wikimedia Commons, with its
-source, when seeing the real thing helps; and an action button when the user will want to copy a command, open a page
-or settings pane, or type something into the field in front. Buttons only do what they say, when clicked.`
-
-const WALKTHROUGH = `
-When the task takes several clicks (changing a setting, finding a menu), walk the user through it: show only the first
-step, the one thing to click, and set next to it. Once they click it you get the screen as it is then: show the next
-step the same way, and leave next out when the task is done. Say in the caption what the step does, briefly.`
-
-const FOLLOW_UPS = `
-The user may ask follow-up questions. Each comes with a new screenshot of the screen as it is now and its own list of
-elements: use only that turn's ids and coordinates. Build on what earlier answers said and showed, don't repeat it.`
-
-const system = (narrate: boolean) => `${INSTRUCTIONS}
-You get a screenshot of the user's screen and a question. Answer by drawing on their screen: marks in the
-screenshot's coordinates, and a caption with the answer itself. Put marks on the exact thing the user needs (the
-menu, button, field or line), never on a guess: if the thing isn't visible, say in the caption where to find it and
-mark the nearest step that is visible (the menu that holds it, say).
-When the question is how something works or how it is put together (an engine, a joint, a gearbox, a lock), answer
-with one figure: build it from simple parts that sit where they really would, the moving ones with motion that shows
-the mechanism, see-through housings over what's inside, and labels on the three or four parts that matter. Keep it to
-what explains the idea, not every bolt. Join parts that drive each other with links (meshing gears, a belt, a shared
-shaft, a crank driving a rod and piston, a spring held by a moving part) and give only the driving part a spin:
-screen-ink works out the speeds, spacing and timing, so it moves as the real one does. A pipe can flow to show what
-runs through it, and pendulums and bounces keep gravity's time. Turned parts (a valve, a bottle) are lathes, flat cut parts (a cam, a bracket)
-are extrudes, bent ones (a hose) are pipes, and a set of like parts is one part with copies; give parts real materials
-where it helps them read (steel, brass, glass). Then walk through it in two to four steps, each saying one thing while
-the figure shows it: cut the housing open, pull the parts apart, focus on the part being talked about, slow the motion
-or move in close. The figure's own say is a short opening; the steps carry the explanation.${MARKS}${WALKTHROUGH}${/\bWebSearch\b/.test(TOOLS) ? WEB : ''}${FOLLOW_UPS}${narrate ? `\n${NARRATE} The caption stays the short written version.` : ''}`
-
-const TIMEOUT_MS = 120_000 // for one answer
-const FOLLOW_UP_MS = 120_000 // how long a conversation waits for the next question
-const UNUSED_MS = 60_000 // how long one started for a question that never came waits
-const INTERRUPT_MS = 3000 // how long an interrupted answer may take to stop before the conversation is ended
-
-export interface Listener {
-  /** A tool is running (a web search, say): what the bar shows meanwhile. */
-  onStep?: (note: string) => void
-  /** The caption, as soon as it is written. */
-  onCaption?: (caption: string) => void
-  /** A mark, as soon as it is written. Marks arrive in order, before the whole answer does. */
-  onMark?: (mark: MarkInput) => void
-}
-
-/** What the bar shows while a tool runs. */
-function step(name: string, input: Record<string, unknown> = {}): string {
-  if (name === 'WebSearch') return `Searching “${input.query}”`
-  if (name === 'WebFetch') {
-    try { return `Reading ${new URL(String(input.url)).hostname}` } catch {}
-  }
-  if (name === 'StructuredOutput') return 'Drawing the answer'
-  return `Using ${name}`
-}
+export type { Answer, Listener } from './answer'
 
 interface Turn {
   listener: Listener
@@ -107,12 +36,9 @@ interface Turn {
   timer: NodeJS.Timeout
 }
 
-class Conversation {
-  readonly narrate: boolean
-  /** Questions asked so far, answered or not. */
+class Claude implements Engine {
   asked = 0
   ended = false
-  /** The bar is open on this conversation, waiting for a question. */
   waiting = false
   private child: ChildProcess
   private turn: Turn | null = null
@@ -120,17 +46,24 @@ class Conversation {
   private err = ''
   private expiry: NodeJS.Timeout | null = null
 
-  constructor(narrate: boolean) {
-    this.narrate = narrate
+  /** `apiKey` answers on an API key (with --bare) instead of the CLI's login. */
+  constructor(
+    readonly key: string,
+    readonly narrate: boolean,
+    apiKey: string | null,
+    private onEnd: (e: Engine) => void,
+  ) {
+    const { claude, model, effort, tools } = settings.get()
     const args = [
-      '-p', '--safe-mode', '--no-session-persistence',
+      '-p', apiKey ? '--bare' : '--safe-mode', '--no-session-persistence',
       '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-      '--model', MODEL, ...(EFFORT ? ['--effort', EFFORT] : []),
-      '--tools', TOOLS, ...(TOOLS ? ['--allowedTools', TOOLS] : []),
-      '--system-prompt', system(narrate),
+      '--model', model, ...(effort ? ['--effort', effort] : []),
+      '--tools', tools, ...(tools ? ['--allowedTools', tools] : []),
+      '--system-prompt', system(narrate, tools),
       '--json-schema', JSON.stringify(ANSWER_JSON_SCHEMA),
     ]
-    const child = (this.child = spawn(CLAUDE, args, { cwd: os.tmpdir(), stdio: ['pipe', 'pipe', 'pipe'] }))
+    const env = apiKey ? { ...process.env, ANTHROPIC_API_KEY: apiKey } : process.env
+    const child = (this.child = spawn(claude, args, { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'pipe'] }))
     child.stdout!.on('data', d => {
       const lines = (this.out += d).split('\n')
       this.out = lines.pop() ?? ''
@@ -140,7 +73,7 @@ class Conversation {
     child.stdin!.on('error', () => {}) // the CLI quit before reading (bad flag, no login): 'close' reports why
     child.on('error', e => {
       const code = (e as NodeJS.ErrnoException).code
-      this.end(code === 'ENOENT' ? new Error(`Can't find "${CLAUDE}". Set SCREEN_INK_CLAUDE to its full path.`) : e)
+      this.end(code === 'ENOENT' ? new Error(`Can't find "${claude}". Set its full path in Settings.`) : e)
     })
     child.on('close', code => {
       this.read(this.out)
@@ -159,7 +92,6 @@ class Conversation {
     )
   }
 
-  /** Sends words alone, about the last answer. */
   tell(words: string, listener: Listener): Promise<Answer> {
     return this.send([{ type: 'text', text: words }], listener)
   }
@@ -177,19 +109,16 @@ class Conversation {
     })
   }
 
-  /** Keeps the conversation going until release. */
   hold(): void {
     if (this.expiry) clearTimeout(this.expiry)
     this.expiry = null
   }
 
-  /** Ends the conversation unless another question comes within `ms`. */
   release(ms: number): void {
     this.hold()
     if (!this.ended && !this.turn) this.expiry = setTimeout(() => this.close(), ms)
   }
 
-  /** Stops the answer being written; the conversation carries on. */
   interrupt(): void {
     const turn = this.turn
     if (!turn) return
@@ -246,18 +175,33 @@ class Conversation {
       clearTimeout(turn.timer)
       turn.reject(e)
     }
-    if (current === this) current = null
+    this.onEnd(this)
   }
 }
 
-let current: Conversation | null = null
+let current: Engine | null = null
+
+/** The conversation to ask in: the one going, unless the settings it started with have changed since. */
+function start(): Engine {
+  const s = settings.get()
+  const narrate = voice.isOn() // the system prompt says whether to narrate
+  const key = [s.provider, s.model, s.effort, s.tools, s.claude, s.codex, s.codexModel, narrate].join('|')
+  if (current && current.key !== key) reset()
+  if (current) return current
+  const onEnd = (e: Engine) => current === e && (current = null)
+  if (s.provider === 'codex') return (current = new Codex(key, narrate, onEnd))
+  const apiKey = s.provider === 'api-key' ? settings.apiKey() : null
+  if (s.provider === 'api-key' && !apiKey) throw new Error('Add your Anthropic API key in Settings, or answer with Claude Code.')
+  return (current = new Claude(key, narrate, apiKey, onEnd))
+}
 
 /** Starts a conversation ahead of the question, or keeps the one going. Call it when the bar opens. */
 export function warm(): void {
-  if (current && current.narrate !== voice.isOn()) reset() // its system prompt says whether to narrate
-  if (!current) current = new Conversation(voice.isOn())
-  current.hold()
-  current.waiting = true
+  try {
+    const convo = start()
+    convo.hold()
+    convo.waiting = true
+  } catch {} // asking will say why
 }
 
 /** The bar closed without a question. */
@@ -279,15 +223,15 @@ export function reset(): void {
 }
 
 /** Asks about `shot`, continuing the conversation if there is one. Aborting interrupts the answer. */
-export async function askClaude(question: string, shot: Capture, signal: AbortSignal, listener: Listener = {}): Promise<Answer> {
+export async function ask(question: string, shot: Capture, signal: AbortSignal, listener: Listener = {}): Promise<Answer> {
   const list = describe(await shot.elements)
   if (signal.aborted) throw new Error('Cancelled')
-  warm()
-  const convo = current!
+  const convo = start()
+  convo.hold()
   const stop = () => convo.interrupt()
   signal.addEventListener('abort', stop, { once: true })
   try {
-    if (!CHECK) return await convo.ask(question, shot, list, listener)
+    if (!settings.checking()) return await convo.ask(question, shot, list, listener)
     // A figure whose mechanism can't work is held back, with whatever follows it, and Claude is asked once to fix it.
     let held = false
     let passed = 0

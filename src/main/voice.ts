@@ -1,5 +1,5 @@
 // Narration. Kokoro, an open 82M-parameter voice model run on the CPU through kokoro-js, speaks each mark's words;
-// macOS's `say` stands in until Kokoro has loaded, and for good with SCREEN_INK_VOICE=say. The overlay asks for a
+// macOS's `say` stands in until Kokoro has loaded, and for good with the voice set to say. The overlay asks for a
 // mark's words as the mark starts and waits for them, so `speak` resolves once they are said (or cut off by a clear
 // or a new drawing). `prepare` renders a drawing's lines ahead, in order, so each is ready when its mark starts.
 // `speak` also says when the words start and how long they'll take, so the overlay can caption them.
@@ -9,15 +9,15 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { GenerateOptions, KokoroTTS } from 'kokoro-js'
-import { VOICE } from './config'
+import * as settings from './settings'
 
 const MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX'
+// The voice is chosen at launch. An unknown name fails Kokoro's warm-up below, which then leaves the speaking to say.
+const VOICE = settings.get().voice
 const MAC = VOICE === 'say' || VOICE.startsWith('say:')
 const MAC_VOICE = VOICE.startsWith('say:') ? VOICE.slice(4) : null
-// An unknown name fails Kokoro's warm-up below, which then leaves the speaking to say.
-const KOKORO_VOICE = (MAC || VOICE === 'off' ? 'af_heart' : VOICE) as NonNullable<GenerateOptions['voice']>
-
-let on = VOICE !== 'off'
+const KOKORO_VOICE = (MAC ? 'af_heart' : VOICE) as NonNullable<GenerateOptions['voice']>
+const on = () => settings.get().speak
 let kokoro: KokoroTTS | null = null
 let loading: Promise<void> | null = null
 let current: ChildProcess | null = null
@@ -36,17 +36,17 @@ const SAY_WORDS_PER_SECOND = 2.9 // macOS's say at its default rate
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'screen-ink-voice-'))
 process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }))
 
-export const isOn = () => on
+export const isOn = on
 
 export function setOn(value: boolean): void {
-  on = value
-  if (on) void load()
+  settings.set({ speak: value })
+  if (value) void load()
   else stop()
 }
 
 /** Loads Kokoro, downloading it (about 330 MB) on first use. */
 export function load(): Promise<void> {
-  if (MAC || !on) return Promise.resolve()
+  if (MAC || !on()) return Promise.resolve()
   return (loading ??= (async () => {
     const { env } = await import('@huggingface/transformers')
     env.cacheDir = path.join(app.getPath('userData'), 'models')
@@ -61,7 +61,7 @@ export function load(): Promise<void> {
 /** Renders `lines` in order, ahead of the marks that say them. Resolves when the first is ready. */
 export function prepare(lines: string[]): Promise<unknown> {
   const tts = kokoro
-  if (!on || !tts) return Promise.resolve()
+  if (!on() || !tts) return Promise.resolve()
   const mine = batch
   for (const text of lines) {
     if (clips.has(text)) continue
@@ -88,7 +88,7 @@ async function render(tts: KokoroTTS, text: string): Promise<Clip | null> {
 export async function speak(text: string, onStart?: (seconds: number) => void): Promise<void> {
   stop()
   const mine = turn
-  if (!on || !text.trim()) return
+  if (!on() || !text.trim()) return
   if (kokoro && !clips.has(text)) void prepare([text])
   const clip = (await clips.get(text)) ?? null
   clips.delete(text)

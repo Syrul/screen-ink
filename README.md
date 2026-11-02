@@ -1,9 +1,10 @@
 # screen-ink
 
-A menu-bar app that lets any MCP agent (Claude Code, Codex, …) look at your screen and draw on it: rings,
-arrows, name pills, step badges, dashed frames, highlights and handwriting, animated like a pen, plus small
-3D figures that build part by part and move, in a transparent click-through overlay, talking you through it
-out loud as it draws. Or press **⌥⇧Space**, ask a question, and your local `claude` CLI answers by drawing. Either way it runs on whatever subscription the CLI is signed into.
+A companion for Claude Code: a menu-bar app that lets it (or any MCP agent, Codex included) look at your screen
+and draw on it: rings, arrows, name pills, step badges, notes, code cards, charts and flowcharts, animated like a
+pen, plus small 3D figures that build part by part and move, in a transparent click-through overlay, talking you
+through it out loud as it draws. Or press **⌥⇧Space**, ask a question, and the Claude Code you have installed
+answers by drawing, signed in as it is. Your own Anthropic API key or Codex can answer instead.
 
 ```
 agent ──MCP (HTTP, 127.0.0.1:7377)──▶ screen-ink main ──IPC──▶ overlay window (SVG + perfect-freehand, three.js)
@@ -29,7 +30,37 @@ model guesses instead of snapping to real things (see [Pointing exactly](#pointi
 
 A ✎ appears in the menu bar. Its menu has **Ask about the screen…** (⌥⇧Space anywhere), **Clear** (⌃⌥⎋
 anywhere), **Draw demo** and **Draw 3D demo** (samples drawn over your screen without needing any
-permission), **Speak answers** (voice on or off), and **Copy "claude mcp add" command**.
+permission), switches for speaking, listening, captions and pen sounds, **Copy "claude mcp add" command**, and
+**Settings…**.
+
+## Settings and setup
+
+The first launch opens **Settings**, which doubles as setup. Its top section shows what macOS has allowed
+(Screen Recording, Accessibility, the microphone) with a button for each that asks or opens the right pane in
+System Settings, and whether the model that answers is ready (`claude auth status`, or `codex login status`).
+
+**Who answers the shortcut:**
+
+- **Claude Code** (the default): your installed `claude`, signed in as it is.
+- **Claude Code with your API key**: the same CLI run with `--bare`, which reads no login and bills the key. The
+  key is kept encrypted with the system keychain (Electron's `safeStorage`), never in the settings file.
+- **Codex**: your installed `codex exec`, signed in as it is, read-only, ephemeral and without your Codex config.
+  It doesn't stream, so its marks arrive together, and a follow-up is a fresh run told what came before.
+
+The rest are the model and effort, web search, checking 3D figures, the shortcut (any
+[accelerator](https://www.electronjs.org/docs/latest/api/accelerator) with a modifier), the ink colour, the
+voice, captions, listening and pen sounds, the `claude mcp add` command, and the licence. Each change is saved as
+it is made, to `settings.json` in the app's data folder; an environment variable set at launch (below) wins over
+it for that run.
+
+**Licence keys** are offline: a key is the buyer's name and email signed with an Ed25519 private key, checked
+against the public key built into the app. `node scripts/licence.mjs keygen <file>` makes the key pair (keep the
+private key out of the repo) and prints the public key for `PUBLIC_KEY` in
+[src/main/licence.ts](src/main/licence.ts); `node scripts/licence.mjs issue <file> --name … --email …` signs a key.
+Nothing is locked without one yet: Settings just shows whose copy it is.
+
+**Updates:** with `SCREEN_INK_UPDATE_FEED` set to an https JSON feed (`{"version": "…", "url": "https://…"}`),
+the app checks it at launch and daily and offers the download in its menu. It doesn't install by itself.
 
 ## Ask with the shortcut
 
@@ -146,7 +177,15 @@ opens** in the menu turns listening off, and `SCREEN_INK_LISTEN=off` starts with
 The server needs a bearer token, which screen-ink creates on first launch in
 `~/Library/Application Support/screen-ink/token`.
 
-Claude Code:
+Claude Code, as a plugin from this repository's marketplace. It reads the token itself each time it connects
+(`plugin/scripts/headers.sh`), and adds a `/screen-ink:show` skill:
+
+```
+/plugin marketplace add <owner>/<repo>
+/plugin install screen-ink@screen-ink
+```
+
+Or Claude Code with the server alone:
 
 ```bash
 claude mcp add --transport http screen-ink http://127.0.0.1:7377/mcp --header "Authorization: Bearer $(cat ~/Library/Application\ Support/screen-ink/token)"
@@ -278,7 +317,9 @@ glass are lit by a soft studio room so they shine, and keep the ink.
   (2 for the pen demo, 3 for the 3D one, R to replay; `#3d` in the URL starts with 3D). The quickest way to
   work on the look; `drawPreview(marks, caption, { append, remove })` in its console draws any marks.
 - `npm run typecheck`, `npm run build`.
-- Settings ([src/main/config.ts](src/main/config.ts)): `SCREEN_INK_PORT` (default 7377), `SCREEN_INK_COLOR`
+- Environment ([src/main/settings.ts](src/main/settings.ts), [src/main/config.ts](src/main/config.ts)), each
+  winning over Settings for that run: `SCREEN_INK_PROVIDER` (`claude-code`, `api-key` or `codex`),
+  `SCREEN_INK_CODEX` (path to `codex`), `SCREEN_INK_PORT` (default 7377), `SCREEN_INK_COLOR`
   (ink hex, default `#FF5A36`), `SCREEN_INK_HOTKEY` (default `Alt+Shift+Space`, an
   [Electron accelerator](https://www.electronjs.org/docs/latest/api/accelerator)), `SCREEN_INK_MODEL`
   (default `sonnet`), `SCREEN_INK_EFFORT` (`low`, `medium`, `high`, `xhigh` or `max`; unset, the CLI's
@@ -288,14 +329,22 @@ glass are lit by a soft studio room so they shine, and keep the ink.
   `SCREEN_INK_CAPTIONS=off` (start without captions), `SCREEN_INK_LISTEN=off` (the bar only takes typing),
   `SCREEN_INK_CHECK` (`on` or `off`: deep mode, which checks figures and has Claude fix them before they are
   drawn; on by default at `high` effort and above), `SCREEN_INK_SOUNDS=off` (start without pen sounds),
-  `SCREEN_INK_PHOTO_HOSTS` (hosts photos may come from, comma-separated; default `upload.wikimedia.org`), `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
+  `SCREEN_INK_PHOTO_HOSTS` (hosts photos may come from, comma-separated; default `upload.wikimedia.org`), `SCREEN_INK_UPDATE_FEED` (the update feed), `SCREEN_INK_LICENCE_PUBLIC_KEY` (a PEM public key to check licences
+  against in a development run; a packaged app only uses the built-in one), `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
 
 | File | Role |
 | --- | --- |
 | [src/main/main.ts](src/main/main.ts) | Menu bar, token, shortcuts, startup |
 | [src/main/mcp.ts](src/main/mcp.ts) | MCP server and tool descriptions (the drawing "skill" the agent reads) |
 | [src/main/ask.ts](src/main/ask.ts) | The shortcut: screenshot, prompt bar, answer |
-| [src/main/brain.ts](src/main/brain.ts) | Keeps a `claude -p` conversation going and streams its answers; its system prompt |
+| [src/main/brain.ts](src/main/brain.ts) | Keeps a `claude -p` conversation going and streams its answers; picks the engine |
+| [src/main/answer.ts](src/main/answer.ts) | What an answer is, the system prompt, and what an engine offers |
+| [src/main/codex.ts](src/main/codex.ts) | Codex as the engine: one `codex exec` per question |
+| [src/main/settings.ts](src/main/settings.ts) | Saved settings, the environment's overrides, the encrypted API key |
+| [src/main/settings-window.ts](src/main/settings-window.ts), [src/renderer/settings.ts](src/renderer/settings.ts) | Settings and first-run setup |
+| [src/main/licence.ts](src/main/licence.ts), [scripts/licence.mjs](scripts/licence.mjs) | Offline Ed25519 licence keys |
+| [src/main/update.ts](src/main/update.ts) | Checks the update feed |
+| [plugin/](plugin) | The Claude Code plugin: the MCP server, its token helper, and the `show` skill |
 | [src/main/stream.ts](src/main/stream.ts) | Picks each finished mark out of the answer's JSON as it is written |
 | [src/main/canvas.ts](src/main/canvas.ts) | The last screenshot's coordinate space, shared by MCP and the shortcut |
 | [src/main/capture.ts](src/main/capture.ts) | Screenshots and the unit → point scale |

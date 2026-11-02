@@ -3,10 +3,10 @@
 import { screen, type Display } from 'electron'
 import type { DrawPayload, MarkInput } from '../shared/marks'
 import type { Capture } from './capture'
-import { INK } from './config'
 import * as overlay from './overlay'
 import { fetchPhoto } from './photos'
 import { place, type Element } from './sense'
+import * as settings from './settings'
 
 let last: { displayId: number; width: number; elements: Promise<Element[]> } | null = null
 
@@ -41,6 +41,6 @@ export async function draw(args: Drawing): Promise<{ display: Display; drawn: nu
       }),
     )
   ).filter(m => m !== null)
-  await overlay.draw(d, { ...args, marks, ppu, ink: INK })
+  await overlay.draw(d, { ...args, marks, ppu, ink: settings.get().ink })
   return { display: d, drawn: marks.length, missing, failed }
 }

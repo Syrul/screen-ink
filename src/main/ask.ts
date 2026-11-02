@@ -235,7 +235,7 @@ async function reply(question: string, shot: Capture, keep: boolean, abort: Abor
   }
 
   try {
-    const answer = await brain.askClaude(question, shot, abort.signal, {
+    const answer = await brain.ask(question, shot, abort.signal, {
       onStep: note => !abort.signal.aborted && send({ state: 'thinking', note }),
       onCaption: c => (caption = c),
       onMark,

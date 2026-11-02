@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <title>screen-ink Settings</title>
+    <style>
+      :root {
+        --bg: #f6f5f3;
+        --card: #ffffff;
+        --text: #1f2125;
+        --muted: #6b6f76;
+        --line: rgba(0, 0, 0, 0.08);
+        --ink: #ff5a36;
+        --ok: #1f9d55;
+        --warn: #d97706;
+        --field: #ffffff;
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1c1d20;
+          --card: #26272b;
+          --text: #ececee;
+          --muted: #9a9ca3;
+          --line: rgba(255, 255, 255, 0.09);
+          --field: #1c1d20;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        -webkit-user-select: none;
+      }
+      header {
+        -webkit-app-region: drag;
+        padding: 34px 28px 10px;
+      }
+      header h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+      header h1 span { color: var(--ink); }
+      header p { margin: 4px 0 0; color: var(--muted); }
+      main { padding: 6px 28px 36px; }
+      section {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        margin: 14px 0;
+        padding: 4px 16px;
+      }
+      h2 { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 22px 2px 0; }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 0;
+        border-top: 1px solid var(--line);
+      }
+      .row:first-child { border-top: 0; }
+      .row .what { flex: 1; min-width: 0; }
+      .row .what b { font-weight: 560; display: block; }
+      .row .what small { color: var(--muted); display: block; font-size: 12px; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--warn); }
+      .dot.ok { background: var(--ok); }
+      button {
+        font: inherit;
+        padding: 4px 12px;
+        border-radius: 7px;
+        border: 1px solid var(--line);
+        background: var(--field);
+        color: var(--text);
+        cursor: pointer;
+        flex: none;
+      }
+      button.primary { background: var(--ink); border-color: transparent; color: #fff; font-weight: 560; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      input[type='text'], input[type='password'], select {
+        font: inherit;
+        padding: 5px 8px;
+        border-radius: 7px;
+        border: 1px solid var(--line);
+        background: var(--field);
+        color: var(--text);
+        min-width: 0;
+      }
+      input[type='text'], input[type='password'] { width: 220px; -webkit-user-select: text; }
+      input.wide { width: 100%; }
+      input[type='checkbox'] { accent-color: var(--ink); width: 15px; height: 15px; }
+      input[type='color'] { width: 40px; height: 26px; border: 0; padding: 0; background: none; }
+      .choices { display: grid; gap: 8px; padding: 12px 0; }
+      .choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+      .choice.on { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+      .choice input { margin-top: 3px; accent-color: var(--ink); }
+      .choice small { display: block; color: var(--muted); }
+      .note { color: var(--muted); font-size: 12px; padding: 10px 0; }
+      .note.bad { color: var(--warn); }
+      code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .mono { font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; color: var(--muted); -webkit-user-select: text; }
+      .hidden { display: none !important; }
+      .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 7px 14px; border-radius: 8px; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+      .toast.show { opacity: 1; }
+      .toast button { margin-left: 8px; pointer-events: auto; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>screen<span>-</span>ink</h1>
+      <p>A companion for Claude Code that draws its answers on your screen.</p>
+    </header>
+    <main>
+      <h2>Setup</h2>
+      <section id="setup"></section>
+
+      <h2>Who answers the shortcut</h2>
+      <section>
+        <div class="choices" id="providers"></div>
+        <div class="row hidden" id="key-row">
+          <div class="what"><b>Anthropic API key</b><small id="key-hint">Kept encrypted in your keychain.</small></div>
+          <input type="password" id="key" placeholder="sk-ant-…" autocomplete="off" />
+          <button id="key-save">Save</button>
+        </div>
+        <div class="row" id="model-row">
+          <div class="what"><b>Model</b><small>An alias like sonnet or opus, or a full model id.</small></div>
+          <input type="text" id="model" list="models" />
+          <datalist id="models"><option value="sonnet"></option><option value="opus"></option><option value="haiku"></option></datalist>
+        </div>
+        <div class="row hidden" id="codex-model-row">
+          <div class="what"><b>Codex model</b><small>Empty for Codex's default.</small></div>
+          <input type="text" id="codexModel" />
+        </div>
+        <div class="row">
+          <div class="what"><b>Effort</b><small>Higher places marks more carefully, and answers more slowly.</small></div>
+          <select id="effort">
+            <option value="">Default</option><option value="low">Low</option><option value="medium">Medium</option>
+            <option value="high">High</option><option value="xhigh">Extra high</option><option value="max">Max</option>
+          </select>
+        </div>
+        <div class="row">
+          <div class="what"><b>Search the web</b><small>When the answer depends on what may have changed: versions, prices, docs.</small></div>
+          <input type="checkbox" id="web" />
+        </div>
+        <div class="row">
+          <div class="what"><b>Check 3D figures</b><small>Has the model fix a mechanism that can't work before it is drawn.</small></div>
+          <select id="check"><option value="auto">At high effort</option><option value="on">Always</option><option value="off">Never</option></select>
+        </div>
+        <div class="row" id="claude-row">
+          <div class="what"><b>Claude Code command</b><small>Its full path, if screen-ink can't find it.</small></div>
+          <input type="text" id="claude" />
+        </div>
+        <div class="row hidden" id="codex-row">
+          <div class="what"><b>Codex command</b><small>Its full path, if screen-ink can't find it.</small></div>
+          <input type="text" id="codex" />
+        </div>
+      </section>
+
+      <h2>Drawing and voice</h2>
+      <section>
+        <div class="row">
+          <div class="what"><b>Shortcut</b><small>Opens the question bar on the screen under the mouse.</small></div>
+          <input type="text" id="hotkey" style="width: 160px" />
+        </div>
+        <div class="row">
+          <div class="what"><b>Ink</b></div>
+          <input type="color" id="ink" />
+        </div>
+        <div class="row">
+          <div class="what"><b>Speak answers</b><small>With Kokoro, on this Mac.</small></div>
+          <input type="checkbox" id="speak" />
+        </div>
+        <div class="row">
+          <div class="what"><b>Voice</b><small>Takes effect when screen-ink restarts.</small></div>
+          <select id="voice">
+            <option value="af_heart">Heart (US)</option><option value="af_bella">Bella (US)</option><option value="am_michael">Michael (US)</option>
+            <option value="am_fenrir">Fenrir (US)</option><option value="bf_emma">Emma (UK)</option><option value="bm_george">George (UK)</option>
+            <option value="say">The Mac's own voice</option>
+          </select>
+        </div>
+        <div class="row">
+          <div class="what"><b>Captions</b><small>Show what is being said.</small></div>
+          <input type="checkbox" id="captions" />
+        </div>
+        <div class="row">
+          <div class="what"><b>Listen when the bar opens</b><small>Ask out loud; it is heard on this Mac.</small></div>
+          <input type="checkbox" id="listen" />
+        </div>
+        <div class="row">
+          <div class="what"><b>Pen sounds</b><small>A soft scratch as it draws.</small></div>
+          <input type="checkbox" id="sounds" />
+        </div>
+      </section>
+
+      <h2>Connect Claude Code</h2>
+      <section>
+        <div class="row">
+          <div class="what">
+            <b>Let Claude Code draw on your screen</b>
+            <small>Adds screen-ink's screenshot and draw tools to Claude Code, over a private local connection.</small>
+          </div>
+          <button id="mcp-copy">Copy command</button>
+        </div>
+        <div class="note mono" id="mcp-command"></div>
+      </section>
+
+      <h2>Licence</h2>
+      <section>
+        <div class="row">
+          <div class="what"><b id="licence-title">Unlicensed</b><small id="licence-text"></small></div>
+        </div>
+        <div class="row" id="licence-row">
+          <input type="text" class="wide" id="licence" placeholder="Paste your licence key" />
+          <button id="licence-save">Activate</button>
+        </div>
+      </section>
+      <p class="note" id="version"></p>
+    </main>
+    <div class="toast" id="toast"><span></span><button class="hidden">Restart</button></div>
+    <script src="settings.js"></script>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "screen-ink": {
+      "type": "http",
+      "url": "http://127.0.0.1:7377/mcp",
+      "headersHelper": "${CLAUDE_PLUGIN_ROOT}/scripts/headers.sh"
+    }
+  }
+}

@@ -4,29 +4,28 @@
 import { app, ipcMain, systemPreferences } from 'electron'
 import path from 'node:path'
 import type { AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
-import { LISTEN } from './config'
+import * as settings from './settings'
 
 const MODEL = 'onnx-community/moonshine-base-ONNX'
 const SAMPLE_RATE = 16_000
 const MAX_SECONDS = 30
 
-let on = LISTEN
 let asr: AutomaticSpeechRecognitionPipeline | null = null
 let loading: Promise<void> | null = null
 
-export const isOn = () => on
+export const isOn = () => settings.get().listen
 
 export function setOn(value: boolean): void {
-  on = value
-  if (on) void load()
+  settings.set({ listen: value })
+  if (value) void load()
 }
 
 /** Whether the bar should listen as it opens: on, and the recognizer is ready. */
-export const ready = () => on && !!asr
+export const ready = () => isOn() && !!asr
 
 /** Loads Moonshine, downloading it (about 65 MB) on first use. */
 export function load(): Promise<void> {
-  if (!on) return Promise.resolve()
+  if (!isOn()) return Promise.resolve()
   return (loading ??= (async () => {
     const { env, pipeline } = await import('@huggingface/transformers')
     env.cacheDir = path.join(app.getPath('userData'), 'models')
