@@ -1,13 +1,15 @@
 // What is on screen, as elements a mark can name instead of guessing coordinates: the frontmost app's controls from
 // the Accessibility API, and every line of text Vision reads, mapped into the screenshot's units and numbered. A
 // Swift helper (native/sense.swift, built to dist/screen-ink-sense) does the looking. Without it, marks fall back to
-// coordinates; without Accessibility access, the list has the text but not the controls.
+// coordinates; without Accessibility access, the list has the text but not the controls. It also reads the words of
+// instruction PDFs and draws their pages, for building along (builds.ts).
 import { systemPreferences, type Display } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import type { Box, Mark, MarkInput, Point } from '../shared/marks'
+import type { Page } from './instructions'
 
 export interface Element {
   id: string
@@ -131,6 +133,18 @@ export async function scroll(at: Point, direction: 'down' | 'up' | 'right' | 'le
   const reply = await request({ scroll: at, dx, dy }, 5000)
   askForAccess(reply)
   return !!reply?.trusted
+}
+
+/** The words on each page of the PDF at `file`, or null if the helper can't read it (or isn't there: macOS only). */
+export async function pdfWords(file: string): Promise<Page[] | null> {
+  const reply = (await request({ pdf: file }, 60_000)) as (Reply & { pages?: Page[] }) | null
+  return reply?.pages ?? null
+}
+
+/** Draws page `page` (from 0) of the PDF at `file` as a JPEG `width` pixels wide at `out`. Resolves whether it did. */
+export async function pdfPage(file: string, page: number, width: number, out: string): Promise<boolean> {
+  const reply = (await request({ pdf: file, page, width, out }, 20_000)) as (Reply & { rendered?: boolean }) | null
+  return !!reply?.rendered
 }
 
 /**

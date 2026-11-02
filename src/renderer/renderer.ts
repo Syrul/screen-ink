@@ -3,6 +3,7 @@
 // A mark's `say` is spoken as it starts, and the drawing waits at the mark's end until the words are out.
 // Opened in a plain browser (no `window.inkBridge`) it draws the demo over a mock window instead.
 import { getStroke } from 'perfect-freehand'
+import type { BuildMove, BuildPanel } from '../shared/build'
 import { speaksCaption } from '../shared/caption'
 import { DEMO_CAPTION, DEMO_FIGURE_CAPTION, DEMO_FIGURE_MARKS, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
 import type { Box, DrawPayload, Mark, Point } from '../shared/marks'
@@ -10,6 +11,7 @@ import { actionBeats, codeBeats, mathBeats, noteBeats, photoBeats, stepsBeats, t
 import { flowBeats, plotBeats, timelineBeats } from './charts'
 import { clamp, el, now, UI_FONT, type Beat } from './common'
 import { disposeFigures, figureBeats } from './figure'
+import * as build from './build'
 import { beside, fadeIn, HAND_FONT, pen, pill, pop } from './ink'
 import { arrow, connector, cross, dashes, marker, outlinePath, ring, strike, tick as tickMark, underline, type Rect } from './shapes'
 import * as pointer from './pointer'
@@ -28,6 +30,9 @@ declare global {
       act(what: Act, value: string, folder?: string): Promise<Outcome>
       onPoint(cb: (p: { id: number; at: Point; press?: boolean; label?: string; scroll?: 'down' | 'up' | 'right' | 'left' }) => void): void
       pointed(id: number): void
+      onBuild(cb: (p: BuildPanel | null) => void): void
+      buildGo(move: BuildMove): void
+      buildSay(text: string): Promise<void>
     }
   }
 }
@@ -305,6 +310,34 @@ function beatsFor(m: Mark, g: SVGGElement, host: HTMLElement, color: string, P: 
 
 const toRect = ([x, y]: Point): Rect => ({ x, y, w: 0, h: 0 })
 
+/** A made-up instructions page of two steps side by side, for the browser preview of the build panel. */
+function mockPage(): string {
+  const c = document.createElement('canvas')
+  Object.assign(c, { width: 1600, height: 1208 })
+  const g = c.getContext('2d')!
+  g.fillStyle = '#d6ecfb'
+  g.fillRect(0, 0, 1600, 1208)
+  g.fillStyle = '#1d1d1f'
+  g.fillRect(758, 60, 4, 1090)
+  for (const [x, n] of [[60, '42'], [820, '43']] as const) {
+    g.fillStyle = '#b4d6f2'
+    g.strokeStyle = '#1d1d1f'
+    g.lineWidth = 3
+    g.beginPath()
+    g.roundRect(x, 60, 640, 200, 24)
+    g.fill()
+    g.stroke()
+    g.fillStyle = '#1d1d1f'
+    g.font = 'bold 110px -apple-system, sans-serif'
+    g.fillText(n, x, 400)
+    g.font = 'bold 30px -apple-system, sans-serif'
+    g.fillText('1x', x + 280, 230)
+    g.fillStyle = '#3b8fd9'
+    g.fillRect(x + 140, 800, 380, 70)
+  }
+  return c.toDataURL('image/jpeg', 0.85)
+}
+
 // ---- drawing and clearing
 
 function fade(out: boolean): void {
@@ -478,6 +511,9 @@ if (window.inkBridge) {
     await (p.press ? pointer.press(p.at, p.label) : p.scroll ? pointer.scroll(p.at, p.scroll) : pointer.glide(p.at))
     window.inkBridge!.pointed(p.id)
   })
+  const bridge = window.inkBridge
+  build.connect({ go: move => bridge.buildGo(move), speak: text => void bridge.buildSay(text) })
+  bridge.onBuild(build.show)
   document.addEventListener('mousemove', trackPointer)
 } else {
   document.body.classList.add('preview')
@@ -493,13 +529,17 @@ if (window.inkBridge) {
     figureDemo = figure
     run()
   }
-  // For trying a drawing out from the console: drawPreview(marks, caption, { append, remove, … }), and the pointer's
-  // press and scroll: pressPreview([x, y], 'View'), scrollPreview([x, y], 'down').
+  // For trying a drawing out from the console: drawPreview(marks, caption, { append, remove, … }), the pointer's
+  // press and scroll: pressPreview([x, y], 'View'), scrollPreview([x, y], 'down'), and the build panel:
+  // buildPreview({ title, label, index, total, say, crop }) over a made-up page of two steps.
+  build.connect({ go: move => ((caption.textContent = `Build: ${move}`), caption.classList.add('show')), speak: text => showSaying(text, 3) })
   Object.assign(window, {
     drawPreview: (marks: Mark[], text?: string, more: Partial<DrawPayload> = {}) =>
       draw({ marks, caption: text, ppu: innerWidth / DEMO_SIZE.width, ink: '#FF5A36', ...more }),
     pressPreview: (at: Point, label?: string) => pointer.press(at, label),
     scrollPreview: (at: Point, direction: 'down' | 'up' | 'right' | 'left' = 'down') => pointer.scroll(at, direction),
+    buildPreview: (p: Partial<BuildPanel> | null) =>
+      build.show(p && { title: 'Sports Car (60285)', label: 'Step 42 of 48', index: 44, total: 53, image: mockPage(), ...p }),
   })
   addEventListener('resize', run)
   addEventListener('keydown', e => (e.key === 'r' ? run() : e.key === '3' ? pick(true)() : e.key === '2' ? pick(false)() : null))

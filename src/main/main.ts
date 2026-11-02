@@ -1,10 +1,11 @@
 // screen-ink: a menu-bar app that serves the MCP tools, owns the overlay, and answers the ask shortcut.
-import { app, clipboard, globalShortcut, Menu, nativeImage, shell, Tray } from 'electron'
+import { app, clipboard, dialog, globalShortcut, Menu, nativeImage, shell, Tray } from 'electron'
 import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { DEMO_CAPTION, DEMO_FIGURE_CAPTION, DEMO_FIGURE_MARKS, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
 import * as ask from './ask'
+import * as builds from './builds'
 import * as canvas from './canvas'
 import { displayUnderCursor } from './capture'
 import { CLEAR_SHORTCUT, PORT } from './config'
@@ -69,6 +70,32 @@ function lessonsMenu(): Electron.MenuItemConstructorOptions[] {
   ]
 }
 
+const BUILDS_IN_MENU = 10
+
+/** Moving the instructions open, opening a PDF of them, and the builds started, to carry on with. */
+function buildsMenu(): Electron.MenuItemConstructorOptions[] {
+  const started = builds.list()
+  const moves: Electron.MenuItemConstructorOptions[] = [
+    { label: 'Next step', click: () => void builds.go('next') },
+    { label: 'Previous step', click: () => void builds.go('back') },
+    { label: 'Put the instructions away', click: () => builds.close() },
+    { type: 'separator' },
+  ]
+  return [
+    ...(builds.active() ? moves : []),
+    { label: 'Open an instructions PDF…', click: () => void openPdf() },
+    { type: 'separator' },
+    ...(started.length
+      ? started.slice(0, BUILDS_IN_MENU).map(b => ({ label: `${b.title} · ${b.label}`, click: () => void builds.resume(b.id) }))
+      : [{ label: 'Or ask the bar: “help me build 60285”', enabled: false }]),
+  ]
+}
+
+async function openPdf(): Promise<void> {
+  const { filePaths } = await dialog.showOpenDialog({ title: 'Building instructions', filters: [{ name: 'PDF', extensions: ['pdf'] }], properties: ['openFile'] })
+  if (filePaths[0]) await builds.open({ file: filePaths[0] }).catch(e => console.error(`screen-ink: ${(e as Error).message}`))
+}
+
 if (!app.requestSingleInstanceLock()) app.quit()
 
 app.on('window-all-closed', () => {}) // a menu-bar app: keep running with no windows
@@ -123,6 +150,7 @@ app.whenReady().then(() => {
       { label: 'Draw demo', click: () => drawDemo() },
       { label: 'Draw 3D demo', click: () => drawDemo(true) },
       { label: 'Lessons', submenu: lessonsMenu() },
+      { label: 'Building instructions', submenu: buildsMenu() },
       { type: 'separator' },
       { label: 'Speak answers', type: 'checkbox', checked: voice.isOn(), click: item => voice.setOn(item.checked) },
       { label: 'Listen when the bar opens', type: 'checkbox', checked: listen.isOn(), click: item => listen.setOn(item.checked) },
@@ -140,6 +168,7 @@ app.whenReady().then(() => {
   tray.setContextMenu(menu())
   settings.onChange(() => tray?.setContextMenu(menu())) // checkboxes follow changes made in Settings
   lessons.onChange(() => tray?.setContextMenu(menu()))
+  builds.onChange(() => tray?.setContextMenu(menu()))
   update.watch(() => tray?.setContextMenu(menu()))
   if (!settings.get().onboarded) {
     settingsWindow.open() // the first run: what to allow, and who answers

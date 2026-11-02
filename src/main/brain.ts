@@ -15,7 +15,7 @@ import { checkFigure, checkMarks } from '../shared/check'
 import { markSchema } from '../shared/marks'
 import {
   ANSWER_JSON_SCHEMA, answerSchema, FOLLOW_UP_MS, INTERRUPT_MS, step, system, TIMEOUT_MS, UNUSED_MS,
-  type Answer, type Engine, type Listener,
+  type Answer, type Engine, type Extra, type Listener,
 } from './answer'
 import type { Capture } from './capture'
 import { Codex } from './codex'
@@ -82,13 +82,15 @@ class Claude implements Engine {
     })
   }
 
-  ask(question: string, shot: Capture, list: string, listener: Listener): Promise<Answer> {
+  ask(question: string, shot: Capture, list: string, listener: Listener, extra?: Extra): Promise<Answer> {
     this.asked++
+    const image = (jpeg: Buffer) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') } })
+    const about = `Screenshot: ${shot.width}×${shot.height} units, x right, y down, origin top-left.${list ? `\n${list}` : ''}`
+    const asked = `Question: ${question}`
     return this.send(
-      [
-        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: shot.jpeg.toString('base64') } },
-        { type: 'text', text: `Screenshot: ${shot.width}×${shot.height} units, x right, y down, origin top-left.${list ? `\n${list}` : ''}\nQuestion: ${question}` },
-      ],
+      extra
+        ? [image(shot.jpeg), { type: 'text', text: about }, { type: 'text', text: extra.note }, image(extra.jpeg), { type: 'text', text: asked }]
+        : [image(shot.jpeg), { type: 'text', text: `${about}\n${asked}` }],
       listener,
     )
   }
@@ -224,7 +226,7 @@ export function reset(): void {
 }
 
 /** Asks about `shot`, continuing the conversation if there is one. Aborting interrupts the answer. */
-export async function ask(question: string, shot: Capture, signal: AbortSignal, listener: Listener = {}): Promise<Answer> {
+export async function ask(question: string, shot: Capture, signal: AbortSignal, listener: Listener = {}, extra?: Extra): Promise<Answer> {
   const list = describe(await shot.elements)
   if (signal.aborted) throw new Error('Cancelled')
   const convo = start()
@@ -232,7 +234,7 @@ export async function ask(question: string, shot: Capture, signal: AbortSignal, 
   const stop = () => convo.interrupt()
   signal.addEventListener('abort', stop, { once: true })
   try {
-    if (!settings.checking()) return kept(await convo.ask(question, shot, list, listener))
+    if (!settings.checking()) return kept(await convo.ask(question, shot, list, listener, extra))
     // A figure whose mechanism can't work is held back, with whatever follows it, and Claude is asked once to fix it.
     let held = false
     let passed = 0
@@ -244,7 +246,7 @@ export async function ask(question: string, shot: Capture, signal: AbortSignal, 
         passed++
         listener.onMark?.(mark)
       },
-    })
+    }, extra)
     const problems = checkMarks(first.marks)
     if (!problems.length || signal.aborted) return kept(first)
     const bad = first.marks.findIndex(m => m.kind === 'figure' && checkFigure(m).length)
@@ -255,10 +257,51 @@ export async function ask(question: string, shot: Capture, signal: AbortSignal, 
       `Checking your figure found: ${problems.join(' ')} Answer again with the caption and the marks from that figure on, fixed.`,
       listener,
     )
-    return kept({ ...fixed, caption: fixed.caption || first.caption, marks: [...before, ...fixed.marks], next: fixed.next ?? first.next, scroll: fixed.scroll ?? first.scroll, final: fixed.final ?? first.final, remember: fixed.remember ?? first.remember })
+    return kept({ ...fixed, caption: fixed.caption || first.caption, marks: [...before, ...fixed.marks], build: fixed.build ?? first.build, next: fixed.next ?? first.next, scroll: fixed.scroll ?? first.scroll, final: fixed.final ?? first.final, remember: fixed.remember ?? first.remember })
   } finally {
     signal.removeEventListener('abort', stop)
   }
+}
+
+const ONCE_MS = 240_000
+
+/**
+ * Asks once, outside the conversation and with no tools, for JSON that fits `schema`: background work like reading
+ * pages of instructions. Claude only (the CLI's login or the API key); resolves null with Codex, or when it fails.
+ */
+export function once(content: unknown[], schema: object, prompt: string): Promise<unknown> {
+  const { provider, claude, model } = settings.get()
+  const apiKey = provider === 'api-key' ? settings.apiKey() : null
+  if (provider === 'codex' || (provider === 'api-key' && !apiKey)) return Promise.resolve(null)
+  const args = [
+    '-p', apiKey ? '--bare' : '--safe-mode', '--no-session-persistence',
+    '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
+    '--model', model, '--tools', '', '--system-prompt', prompt, '--json-schema', JSON.stringify(schema),
+  ]
+  const env = apiKey ? { ...process.env, ANTHROPIC_API_KEY: apiKey } : process.env
+  return new Promise(resolve => {
+    let out = ''
+    let result: unknown = null
+    const child = spawn(claude, args, { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
+    const timer = setTimeout(() => child.kill(), ONCE_MS)
+    child.stdout!.on('data', d => {
+      const lines = (out += d).split('\n')
+      out = lines.pop() ?? ''
+      for (const line of lines) {
+        try {
+          const m = JSON.parse(line)
+          if (m.type === 'result' && !m.is_error) result = m.structured_output ?? null
+        } catch {}
+      }
+    })
+    child.on('error', () => resolve(null))
+    child.on('close', () => {
+      clearTimeout(timer)
+      resolve(result)
+    })
+    child.stdin!.on('error', () => {})
+    child.stdin!.end(JSON.stringify({ type: 'user', message: { role: 'user', content } }) + '\n')
+  })
 }
 
 /** Keeps what the answer asked to remember. */

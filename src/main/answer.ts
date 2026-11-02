@@ -43,6 +43,10 @@ export const answerSchema = z.object({
         'if this question showed a new one. Only what they would be glad you remembered: never passwords, keys, money, health or ' +
         "other people's details, and nothing just read off the screen.",
     ),
+  build: z
+    .object({ set: z.string().regex(/^\d{3,7}(-\d{1,2})?$/).describe('The LEGO set number, like 60285.') })
+    .optional()
+    .describe("When the user wants to build a LEGO set: screen-ink fetches the set's instructions from LEGO and shows them step by step."),
 })
 export type Answer = z.infer<typeof answerSchema>
 
@@ -76,6 +80,12 @@ The user may let screen-ink click the steps for them: then you're told it presse
 without waiting, so keep each one short. Set final on a step whose click can't be taken back (it sends, buys,
 deletes, signs in, installs or grants access): screen-ink leaves that click to the user.`
 
+const BUILD = `
+When the user wants to build a LEGO set along with its instructions, set build to the set's number (from what they
+said or the box or page on screen) and draw nothing: screen-ink fetches the instructions from LEGO and shows them a
+step at a time on the side of the screen, reading each step out. Say in the caption, in a line, that the instructions
+are coming. While they build, a question comes with the page of the step they're on.`
+
 const FOLLOW_UPS = `
 The user may ask follow-up questions. Each comes with a new screenshot of the screen as it is now and its own list of
 elements: use only that turn's ids and coordinates. Build on what earlier answers said and showed, don't repeat it.`
@@ -95,12 +105,18 @@ runs through it, and pendulums and bounces keep gravity's time. Turned parts (a 
 are extrudes, bent ones (a hose) are pipes, and a set of like parts is one part with copies; give parts real materials
 where it helps them read (steel, brass, glass). Then walk through it in two to four steps, each saying one thing while
 the figure shows it: cut the housing open, pull the parts apart, focus on the part being talked about, slow the motion
-or move in close. The figure's own say is a short opening; the steps carry the explanation.${MARKS}${WALKTHROUGH}${/\bWebSearch\b/.test(tools) ? WEB : ''}${FOLLOW_UPS}${narrate ? `\n${NARRATE} The caption stays the short written version.` : ''}${memory.brief() ? `\n${memory.brief()}` : ''}`
+or move in close. The figure's own say is a short opening; the steps carry the explanation.${MARKS}${WALKTHROUGH}${BUILD}${/\bWebSearch\b/.test(tools) ? WEB : ''}${FOLLOW_UPS}${narrate ? `\n${NARRATE} The caption stays the short written version.` : ''}${memory.brief() ? `\n${memory.brief()}` : ''}`
 
 export const TIMEOUT_MS = 120_000 // for one answer
 export const FOLLOW_UP_MS = 120_000 // how long a conversation waits for the next question
 export const UNUSED_MS = 60_000 // how long one started for a question that never came waits
 export const INTERRUPT_MS = 3000 // how long an interrupted answer may take to stop before the conversation is ended
+
+/** Something to see beside the screenshot, and what it is: the page of the instructions being built from. */
+export interface Extra {
+  note: string
+  jpeg: Buffer
+}
 
 export interface Listener {
   /** A tool is running (a web search, say): what the bar shows meanwhile. */
@@ -131,7 +147,7 @@ export interface Engine {
   ended: boolean
   /** The bar is open on this conversation, waiting for a question. */
   waiting: boolean
-  ask(question: string, shot: Capture, list: string, listener: Listener): Promise<Answer>
+  ask(question: string, shot: Capture, list: string, listener: Listener, extra?: Extra): Promise<Answer>
   /** Sends words alone, about the last answer. */
   tell(words: string, listener: Listener): Promise<Answer>
   /** Keeps the conversation going until release. */

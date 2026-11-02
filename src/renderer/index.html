@@ -123,6 +123,149 @@
         padding: 8px 14px 12px;
         white-space: pre-wrap;
       }
+      /* The build panel: a step of the instructions the user is building from. */
+      #build {
+        position: fixed;
+        right: 28px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: min(42vw, 760px);
+        display: none;
+        flex-direction: column;
+        border-radius: 18px;
+        background: #fbf8f2;
+        box-shadow: 0 14px 44px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.06);
+        color: #30333a;
+        font: 500 14px/1.45 -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        overflow: hidden;
+      }
+      #build.show {
+        display: flex;
+      }
+      #build.small {
+        width: 400px;
+      }
+      .build-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 10px 8px 16px;
+      }
+      .build-title {
+        flex: 1;
+        min-width: 0;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .build-label {
+        margin-right: 4px;
+        color: #6b6f76;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .build-icon {
+        width: 28px;
+        height: 28px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: #6b6f76;
+        font: 600 16px/1 -apple-system, system-ui, sans-serif;
+        cursor: pointer;
+      }
+      .build-icon:hover:not(:disabled) {
+        background: rgba(0, 0, 0, 0.07);
+      }
+      .build-go {
+        display: none;
+        font-size: 20px;
+      }
+      #build.small .build-go {
+        display: block;
+      }
+      .build-bar {
+        height: 4px;
+        background: rgba(0, 0, 0, 0.07);
+      }
+      .build-bar > i {
+        display: block;
+        height: 100%;
+        background: var(--build);
+        transition: width 0.3s;
+      }
+      .build-view {
+        position: relative;
+        margin: 0 auto;
+        overflow: hidden;
+      }
+      .build-view img {
+        position: absolute;
+        left: 0;
+        top: 0;
+        max-width: none;
+      }
+      .build-status {
+        display: none;
+        padding: 36px 20px;
+        text-align: center;
+        color: #6b6f76;
+      }
+      #build.waiting .build-status {
+        display: block;
+      }
+      .build-say {
+        padding: 12px 18px 0;
+        font-size: 15px;
+      }
+      .build-say:empty,
+      .build-meta:empty {
+        display: none;
+      }
+      .build-meta {
+        padding: 4px 18px 0;
+        color: #6b6f76;
+        font-size: 12.5px;
+      }
+      .build-nav {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 12px 12px;
+      }
+      .build-nav button {
+        border: 0;
+        border-radius: 16px;
+        padding: 8px 22px;
+        font: 600 14px -apple-system, 'SF Pro Text', system-ui, sans-serif;
+        cursor: pointer;
+      }
+      .build-back {
+        background: rgba(0, 0, 0, 0.07);
+        color: #30333a;
+      }
+      .build-next {
+        background: var(--build);
+        color: #fff;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+      }
+      .build-nav button:disabled,
+      .build-icon:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      #build.waiting .build-view,
+      #build.waiting .build-say,
+      #build.waiting .build-meta,
+      #build.waiting .build-nav,
+      #build.small .build-view,
+      #build.small .build-say,
+      #build.small .build-meta,
+      #build.small .build-nav,
+      #build.small .build-status {
+        display: none;
+      }
       .ink-card.code {
         max-width: 560px;
         background: #1f2228;
@@ -285,6 +428,11 @@
         align-items: center;
         gap: 10px;
         width: min(56vw, 720px);
+      }
+      /* With the build panel open, words keep to the space beside it. */
+      body:has(#build.show:not(.small)) #bottom {
+        left: calc((100vw - min(42vw, 760px) - 28px) / 2);
+        width: min(56vw, 720px, 100vw - min(42vw, 760px) - 84px);
       }
       #subtitle {
         max-width: 100%;

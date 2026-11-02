@@ -12,6 +12,10 @@
 //     presses what the app in front has there (how: press, focus or click), or with dry only says what it would press
 //   {"id": 5, "scroll": [x, y], "dx": 0, "dy": -600} → {"id": 5, "trusted": true}
 //     scrolls whatever is at that spot by dy points down (negative) or up, and dx right (negative) or left
+//   {"id": 6, "pdf": "/path/a.pdf"} → {"id": 6, "pages": [{"size": [w, h], "words": [{"t": "12", "h": 31, "box"}]}]}
+//     every word on every page of a PDF, with the height of its line and its box in page points, top-left origin
+//   {"id": 7, "pdf": "/path/a.pdf", "page": 0, "width": 1600, "out": "/path/p1.jpg"} → {"id": 7, "rendered": true}
+//     draws one page (counted from 0) that many pixels wide, as a JPEG
 //
 // `ax` is the frontmost app's controls (its menu bar and the windows on that display) from the Accessibility API,
 // with frames in global screen points, top-left origin (Electron's coordinates). `ocr` is every line of text Vision
@@ -19,6 +23,7 @@
 // other than screen-ink itself (our parent), whose prompt bar takes focus as the user types.
 import AppKit
 import ApplicationServices
+import PDFKit
 import Vision
 
 setvbuf(stdout, nil, _IOLBF, 0)
@@ -366,10 +371,74 @@ func watch(_ on: Bool) -> Bool {
   return true
 }
 
+// ---- Building instructions, read from their PDF
+
+let tenth = { (v: CGFloat) in (v * 10).rounded() / 10 }
+
+// The last PDF opened, kept while its pages are drawn one after another (a page needs its document alive to draw).
+var opened: (path: String, doc: PDFDocument)?
+func document(_ path: String) -> PDFDocument? {
+  if let opened, opened.path == path { return opened.doc }
+  guard let doc = PDFDocument(url: URL(fileURLWithPath: path)) else { return nil }
+  opened = (path, doc)
+  return doc
+}
+
+/// Every word on each page, with its box in page points (top-left origin). A word's height stands in for its font
+/// size, which is what tells a step number from a page number or a part count.
+func words(_ path: String) -> [String: Any] {
+  guard let doc = document(path) else { return ["error": "not a PDF"] }
+  let word = try! NSRegularExpression(pattern: "\\S+")
+  var pages: [[String: Any]] = []
+  for i in 0..<doc.pageCount {
+    guard let page = doc.page(at: i) else { continue }
+    let crop = page.bounds(for: .cropBox)
+    let text = page.string ?? ""
+    var found: [[String: Any]] = []
+    for m in word.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length)) {
+      guard let b = page.selection(for: m.range)?.bounds(for: page), b.height > 0 else { continue }
+      found.append([
+        "t": (text as NSString).substring(with: m.range),
+        "h": tenth(b.height),
+        "box": [b.minX - crop.minX, crop.maxY - b.maxY, b.width, b.height].map(tenth),
+      ])
+    }
+    pages.append(["size": [tenth(crop.width), tenth(crop.height)], "words": found])
+  }
+  return ["pages": pages]
+}
+
+/// Draws one page `width` pixels wide on white, as a JPEG at `out`.
+func render(_ path: String, page n: Int, width: Double, to out: String) -> Bool {
+  guard let doc = document(path), let page = doc.page(at: n) else { return false }
+  let crop = page.bounds(for: .cropBox)
+  let scale = CGFloat(width) / crop.width
+  let (w, h) = (Int(crop.width * scale), Int(crop.height * scale))
+  guard w > 0, h > 0, w <= 8000, h <= 8000,
+        let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return false }
+  ctx.setFillColor(.white)
+  ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+  ctx.interpolationQuality = .high
+  ctx.scaleBy(x: scale, y: scale)
+  page.draw(with: .cropBox, to: ctx)
+  guard let image = ctx.makeImage(),
+        let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: out) as CFURL, "public.jpeg" as CFString, 1, nil) else { return false }
+  CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+  return CGImageDestinationFinalize(dest)
+}
+
 // ---- Requests
 
 func answer(_ request: [String: Any]) -> [String: Any] {
   var reply: [String: Any] = ["id": request["id"] ?? NSNull(), "trusted": AXIsProcessTrusted()]
+  if let pdf = request["pdf"] as? String {
+    if let n = request["page"] as? Int, let width = request["width"] as? Double, let out = request["out"] as? String {
+      reply["rendered"] = render(pdf, page: n, width: width, to: out)
+      return reply
+    }
+    return reply.merging(words(pdf)) { a, _ in a }
+  }
   if let text = request["type"] as? String {
     if AXIsProcessTrusted() { type(text) }
     return reply
@@ -408,6 +477,7 @@ func answer(_ request: [String: Any]) -> [String: Any] {
 }
 
 let work = DispatchQueue(label: "sense")
+let reading = DispatchQueue(label: "pdf") // a long PDF doesn't hold up a question about the screen
 // Vision's accurate model takes about half a minute to load the first time a binary uses it (it is cached after
 // that), and a second or so on later launches: load it now, on a word, rather than on the user's first question.
 work.async {
@@ -429,7 +499,7 @@ FileHandle.standardInput.readabilityHandler = { handle in
     let line = pending[pending.startIndex..<nl]
     pending = Data(pending[pending.index(after: nl)...])
     guard let request = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { continue }
-    work.async {
+    (request["pdf"] == nil ? work : reading).async {
       let reply = answer(request)
       if let out = try? JSONSerialization.data(withJSONObject: reply), let s = String(data: out, encoding: .utf8) { print(s) }
     }

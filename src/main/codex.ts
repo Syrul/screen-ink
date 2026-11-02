@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { markSchema, type MarkInput } from '../shared/marks'
-import { ANSWER_JSON_SCHEMA, answerSchema, FOLLOW_UP_MS, scrollSchema, system, TIMEOUT_MS, type Answer, type Engine, type Listener } from './answer'
+import { ANSWER_JSON_SCHEMA, answerSchema, FOLLOW_UP_MS, scrollSchema, system, TIMEOUT_MS, type Answer, type Engine, type Extra, type Listener } from './answer'
 import type { Capture } from './capture'
 import * as settings from './settings'
 
@@ -33,15 +33,19 @@ export class Codex implements Engine {
     private onEnd: (e: Engine) => void,
   ) {}
 
-  async ask(question: string, shot: Capture, list: string, listener: Listener): Promise<Answer> {
+  async ask(question: string, shot: Capture, list: string, listener: Listener, extra?: Extra): Promise<Answer> {
     this.asked++
-    const image = path.join(this.dir, `screen-${this.asked}.jpg`)
-    fs.writeFileSync(image, shot.jpeg)
-    const text = `The screenshot is attached: ${shot.width}×${shot.height} units, x right, y down, origin top-left.${list ? `\n${list}` : ''}\nQuestion: ${question}`
+    const images = [shot.jpeg, ...(extra ? [extra.jpeg] : [])].map((jpeg, i) => {
+      const file = path.join(this.dir, `screen-${this.asked}-${i}.jpg`)
+      fs.writeFileSync(file, jpeg)
+      return file
+    })
+    const page = extra ? `\nThe screenshot is the first image attached. ${extra.note}` : ''
+    const text = `The screenshot is attached: ${shot.width}×${shot.height} units, x right, y down, origin top-left.${list ? `\n${list}` : ''}${page}\nQuestion: ${question}`
     try {
-      return await this.turn(text, [image], listener, `Question: ${question}`)
+      return await this.turn(text, images, listener, `Question: ${question}`)
     } finally {
-      fs.rm(image, { force: true }, () => {})
+      for (const file of images) fs.rm(file, { force: true }, () => {})
     }
   }
 
@@ -156,7 +160,7 @@ export class Codex implements Engine {
 /** The answer in Codex's reply, keeping the marks that fit; or why there is none. */
 function parse(reply: string): Answer | string {
   const text = reply.replace(/^```(?:json)?\s*|\s*```$/g, '')
-  let raw: { caption?: unknown; marks?: unknown; next?: unknown; scroll?: unknown; final?: unknown; remember?: unknown }
+  let raw: { caption?: unknown; marks?: unknown; build?: unknown; next?: unknown; scroll?: unknown; final?: unknown; remember?: unknown }
   try {
     raw = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1))
   } catch {
@@ -171,9 +175,11 @@ function parse(reply: string): Answer | string {
   const remember = typeof raw.remember === 'string' ? raw.remember.slice(0, 200) : undefined
   const scroll = scrollSchema.safeParse(raw.scroll)
   const final = raw.final === true ? true : undefined
+  const build = answerSchema.shape.build.safeParse(raw.build ?? undefined)
   return {
     caption: raw.caption.slice(0, 400),
     marks: marks.slice(0, 20),
+    build: build.success ? build.data : undefined,
     next: next.success ? next.data : undefined,
     scroll: scroll.success ? scroll.data : undefined,
     final,

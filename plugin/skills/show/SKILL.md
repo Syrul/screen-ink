@@ -32,3 +32,7 @@ Give a mark an `id` to change it later with `append` (same id replaces it) or `r
 While you work on something the user is waiting for, keep them posted with `progress`: a checklist in the corner
 of the screen, sent again as each step starts, finishes or fails. It needs no screenshot. When a drawing is worth
 keeping (a lesson they will want again), `save_lesson` keeps it, and `show_lesson` draws it again later.
+
+When the user wants to build a LEGO set (or follow an instructions PDF they have), `build` with the set number shows
+the instructions a step at a time on the side of their screen and reads each step out. They move on with its Next
+button; `build` with `go` moves it for them when they ask you.

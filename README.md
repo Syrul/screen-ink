@@ -4,7 +4,8 @@ A companion for Claude Code: a menu-bar app that lets it (or any MCP agent, Code
 and draw on it: rings, arrows, name pills, step badges, notes, checklists, code cards, charts and flowcharts, animated
 like a pen, plus small 3D figures that build part by part and move, in a transparent click-through overlay, talking you
 through it out loud as it draws. Or press **⌥⇧Space**, ask a question, and the Claude Code you have installed
-answers by drawing, signed in as it is. Your own Anthropic API key or Codex can answer instead.
+answers by drawing, signed in as it is. Your own Anthropic API key or Codex can answer instead. Building a LEGO
+set? It fetches the instructions and reads them out to you a step at a time.
 
 ```
 agent ──MCP (HTTP, 127.0.0.1:7377)──▶ screen-ink main ──IPC──▶ overlay window (SVG + perfect-freehand, three.js)
@@ -210,6 +211,27 @@ seconds of nothing stops the listening.
 The first time the bar listens macOS asks for the microphone (in development, for Electron). **Listen when the bar
 opens** in the menu turns listening off, and `SCREEN_INK_LISTEN=off` starts with it off.
 
+## Building along
+
+Ask the bar *"help me build LEGO 60285"* (or an agent calls `build`) and screen-ink fetches that set's building
+instructions from LEGO, finds the steps in the PDF, and shows them one at a time in a panel on the side of the
+screen, reading each one out. **Next** and **Back** are on the panel; or open the bar and say *next*, *back*,
+*step 12*, *say that again* or *stop building*. A question asked meanwhile comes with the step's page, so *"where
+does the orange piece go?"* is answered about it. The panel folds to its title bar with –, and ✕ puts it away.
+Building instructions in the menu moves the instructions open, opens an instructions PDF of your own, and goes back to a
+build you started, where you left off.
+
+The steps are found in the PDF's own text, with no model: step numbers are the run of numbers of one size that
+counts up through the pages, part counts the small `2x` beside the parts, and a page with two steps is split
+between them. Claude then reads the pages in the background, eight at a time from the step showing, and writes a
+spoken line for each (which pieces, by colour and size in studs, and where they go); until it has, a step says its
+number and how many parts it takes. That needs Claude Code or an API key; with Codex the steps go without.
+
+Each build is a folder in the `builds` folder of the app's data: the PDFs, what was found in them, how far you got,
+and pages drawn as they are needed. Only LEGO's own PDF addresses are fetched, and a PDF of your own has to be in
+your home folder. LEGO's instructions are for your own use: they stay on your Mac, and go nowhere but to the model
+that reads them.
+
 ## Connect an agent
 
 The server needs a bearer token, which screen-ink creates on first launch in
@@ -253,6 +275,7 @@ bike's gearing work?"* for a 3D figure.
 | `save_lesson` | Keeps the last drawing, with what was appended to it, as a lesson (optional `title`). |
 | `lessons` | Lists the saved lessons. |
 | `show_lesson` | Draws a lesson again by `id`, scaled to the display. Needs no screenshot. |
+| `build` | Shows a LEGO `set`'s building instructions, or an instructions PDF `file` in the home folder, a step at a time in a panel that reads each step out (see [Building along](#building-along)), at `step` or where the user got to. With `go` (`next`, `back`, `again` or `close`) or `step` alone, moves the ones open; with nothing, says what is showing. Needs no screenshot. |
 | `clear` | Erases everything. |
 
 Marks (coordinates in screenshot units; `box` is `[x, y, w, h]`, points are `[x, y]`). A ring's, label's,
@@ -367,7 +390,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 - `npm run preview` opens the overlay page in your browser, where it draws the demo over a mock window
   (2 for the pen demo, 3 for the 3D one, R to replay; `#3d` in the URL starts with 3D). The quickest way to
   work on the look; `drawPreview(marks, caption, { append, remove })` in its console draws any marks, and
-  `pressPreview([x, y], label)` shows the pointer's press.
+  `pressPreview([x, y], label)` shows the pointer's press, and `buildPreview({ label, crop, say })` the build panel.
 - `npm run typecheck`, `npm run build`.
 - Environment ([src/main/settings.ts](src/main/settings.ts), [src/main/config.ts](src/main/config.ts)), each
   winning over Settings for that run: `SCREEN_INK_PROVIDER` (`claude-code`, `api-key` or `codex`),
@@ -396,6 +419,9 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/main/memory.ts](src/main/memory.ts) | Facts about the user kept between conversations |
 | [src/main/handoff.ts](src/main/handoff.ts) | Opens Claude Code in Terminal on a task from an agent button |
 | [src/main/lessons.ts](src/main/lessons.ts) | Follows the drawing on screen, saves it as a lesson, and gives it back to draw again |
+| [src/main/builds.ts](src/main/builds.ts) | Building along: fetches the instructions, keeps each build and where it got to, shows its steps, has Claude describe them |
+| [src/main/instructions.ts](src/main/instructions.ts) | Finds the steps in an instructions PDF's words: step numbers, split pages, part counts |
+| [src/renderer/build.ts](src/renderer/build.ts), [src/shared/build.ts](src/shared/build.ts) | The build panel, and what it is sent |
 | [src/main/settings.ts](src/main/settings.ts) | Saved settings, the environment's overrides, the encrypted API key |
 | [src/main/settings-window.ts](src/main/settings-window.ts), [src/renderer/settings.ts](src/renderer/settings.ts) | Settings and first-run setup |
 | [src/main/licence.ts](src/main/licence.ts), [scripts/licence.mjs](scripts/licence.mjs) | Offline Ed25519 licence keys |
@@ -405,7 +431,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/main/canvas.ts](src/main/canvas.ts) | The last screenshot's coordinate space, shared by MCP and the shortcut |
 | [src/main/capture.ts](src/main/capture.ts) | Screenshots and the unit → point scale |
 | [src/main/sense.ts](src/main/sense.ts) | Runs the helper, merges its controls and text into the element list, places marks that name ids |
-| [native/sense.swift](native/sense.swift) | The helper: Accessibility walk, Vision OCR, splitting lines by their ink; typing for buttons, watching clicks and scrolls for walkthroughs, pressing and scrolling for "Do it for me" and agents |
+| [native/sense.swift](native/sense.swift) | The helper: Accessibility walk, Vision OCR, splitting lines by their ink; typing for buttons, watching clicks and scrolls for walkthroughs, pressing and scrolling for "Do it for me" and agents; reading and drawing PDF pages |
 | [src/main/photos.ts](src/main/photos.ts) | Fetches photo marks' images, from allowed hosts only |
 | [src/main/overlay.ts](src/main/overlay.ts) | The transparent, click-through window |
 | [src/main/voice.ts](src/main/voice.ts) | Speaks each mark's words with Kokoro, or `say` until it's ready |

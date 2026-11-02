@@ -6,12 +6,15 @@
 // is looked at again and the next step drawn, until the task is done or the user moves on. Or the user lets
 // screen-ink click the steps itself ("Do it for me"): each step is drawn and said first, then pressed through the
 // Accessibility API, except a step that can't be taken back, which is left for the user to click.
+// While the user builds along with instructions (builds.ts), "next" or "step 12" in the bar moves them, and a
+// question comes with the step's page.
 import { BrowserWindow, ipcMain, systemPreferences } from 'electron'
 import path from 'node:path'
 import { words } from '../shared/caption'
 import type { Box, MarkInput, Point } from '../shared/marks'
 import type { Scroll } from './answer'
 import * as brain from './brain'
+import * as builds from './builds'
 import * as canvas from './canvas'
 import { capture, displayUnderCursor, type Capture } from './capture'
 import { ANSWER_SECONDS } from './config'
@@ -120,9 +123,12 @@ export async function toggle(): Promise<void> {
   w.focus()
 }
 
-ipcMain.on('ask:submit', (_e, question: unknown) => {
-  if (!shot || running || typeof question !== 'string' || !question.trim()) return
-  void answer(question.trim(), shot, false)
+ipcMain.on('ask:submit', async (_e, question: unknown) => {
+  const asked = shot
+  if (!asked || running || typeof question !== 'string' || !question.trim()) return
+  // While building, "next", "back" or "step 12" moves the instructions instead of asking.
+  if (builds.active() && (await builds.command(question.trim()))) return close()
+  if (!running) void answer(question.trim(), asked, false)
 })
 
 /** Asks about a part the user clicked in a figure. The answer is drawn beside the figure, which stays. */
@@ -379,14 +385,19 @@ async function reply(question: string, shot: Capture, keep: boolean, abort: Abor
   }
 
   try {
-    const answer = await brain.ask(question, shot, abort.signal, {
-      onStep: note => !abort.signal.aborted && send({ state: 'thinking', note }),
-      onCaption: c => (caption = c),
-      onMark,
-    })
+    // While building, the step's page goes along, so "where does this go?" is about it.
+    const page = await builds.context().catch(() => null)
+    const answer = await brain.ask(
+      question,
+      shot,
+      abort.signal,
+      { onStep: note => !abort.signal.aborted && send({ state: 'thinking', note }), onCaption: c => (caption = c), onMark },
+      page ?? undefined,
+    )
     if (abort.signal.aborted) return {}
     running = null
     hide()
+    if (answer.build) void builds.open({ set: answer.build.set }).catch(() => {}) // the panel says why it couldn't
     await queue(abort, {
       marks: answer.marks.slice(streamed),
       caption: answer.caption,

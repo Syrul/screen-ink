@@ -3,6 +3,7 @@ import { app, BrowserWindow, clipboard, ipcMain, screen, shell, type Display } f
 import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { BUILD_MOVES, type BuildMove, type BuildPanel } from '../shared/build'
 import { speaksCaption, words } from '../shared/caption'
 import type { DrawPayload } from '../shared/marks'
 import * as handoff from './handoff'
@@ -113,6 +114,18 @@ export function showing(): Display | null {
   return screen.getAllDisplays().find(d => d.bounds.x === b.x && d.bounds.y === b.y && d.bounds.width === b.width) ?? null
 }
 
+/** Puts the overlay over `display`, showing. */
+function moveTo(w: BrowserWindow, display: Display): void {
+  const b = display.bounds
+  const cur = w.getBounds()
+  if (cur.x !== b.x || cur.y !== b.y || cur.width !== b.width || cur.height !== b.height) {
+    // A drawing on another display can't carry over: start fresh there.
+    if (w.isVisible()) w.webContents.send('ink:clear', { instant: true })
+    w.setBounds(b)
+  }
+  w.showInactive()
+}
+
 /** Moves the overlay over `display` and draws. */
 export async function draw(display: Display, payload: DrawPayload): Promise<void> {
   const w = overlayWindow()
@@ -126,18 +139,42 @@ export async function draw(display: Display, payload: DrawPayload): Promise<void
   const first = voice.prepare(lines)
   await Promise.all([loaded, Promise.race([first, new Promise(r => setTimeout(r, FIRST_WORDS_WAIT_MS))])])
   const b = display.bounds
-  const cur = w.getBounds()
-  if (cur.x !== b.x || cur.y !== b.y || cur.width !== b.width || cur.height !== b.height) {
-    // A drawing on another display can't carry over: start fresh there.
-    if (w.isVisible()) w.webContents.send('ink:clear', { instant: true })
-    w.setBounds(b)
-  }
-  w.showInactive()
+  moveTo(w, display)
   // screen-ink's pointer starts from the user's mouse, when it is on this display.
   const m = screen.getCursorScreenPoint()
   const inside = m.x >= b.x && m.x < b.x + b.width && m.y >= b.y && m.y < b.y + b.height
   const mouse = !payload.append && inside ? ([m.x - b.x, m.y - b.y] as [number, number]) : undefined
   w.webContents.send('ink:draw', { sounds: soundsOn(), cursor: settings.get().cursor, mouse, ...payload })
+}
+
+// The build panel: the step of the instructions the user is building from (builds.ts). It stays through drawings
+// and clears, and its buttons move the build.
+let building: ((move: BuildMove) => void) | null = null
+/** Who takes the build panel's buttons. */
+export const onBuild = (fn: (move: BuildMove) => void) => void (building = fn)
+ipcMain.on('ink:build-go', (e, move: unknown) => {
+  if (e.sender === page() && BUILD_MOVES.includes(move as BuildMove)) building?.(move as BuildMove)
+})
+// A step's words go without a caption: the panel shows them.
+ipcMain.handle('ink:build-say', (e, text: unknown) => {
+  if (e.sender === page() && typeof text === 'string') return voice.speak(text)
+})
+
+/** Shows `panel` over `display`, or puts the panel away (null). */
+export async function showBuild(display: Display, panel: BuildPanel | null): Promise<void> {
+  if (!panel) {
+    if (win && !win.isDestroyed()) win.webContents.send('ink:build', null)
+    return
+  }
+  const w = overlayWindow()
+  await loaded
+  moveTo(w, display)
+  w.webContents.send('ink:build', { ink: settings.get().ink, ...panel })
+}
+
+/** Reads a step out again. */
+export function sayBuild(text: string | undefined): void {
+  if (text) void voice.speak(text)
 }
 
 // screen-ink's pointer moving to a spot, or pressing there, and the page saying it has.
