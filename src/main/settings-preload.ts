@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('settingsBridge', {
   setKey: (key: string | null): Promise<boolean> => ipcRenderer.invoke('settings:key', key),
   setLicence: (key: string): Promise<LicenceState | null> => ipcRenderer.invoke('settings:licence', key),
   grant: (what: 'screen' | 'accessibility' | 'microphone'): Promise<void> => ipcRenderer.invoke('settings:grant', what),
+  forget: (id: string | null): Promise<void> => ipcRenderer.invoke('settings:forget', id),
+  lesson: (id: string, what: 'show' | 'delete'): Promise<void> => ipcRenderer.invoke('settings:lesson', id, what),
   copy: (text: string): Promise<void> => ipcRenderer.invoke('settings:copy', text),
   link: (url: string): Promise<void> => ipcRenderer.invoke('settings:link', url),
   relaunch: (): Promise<void> => ipcRenderer.invoke('settings:relaunch'),

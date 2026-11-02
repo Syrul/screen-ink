@@ -78,6 +78,47 @@
         font-weight: 600;
         font-size: 12.5px;
       }
+      .steps-list {
+        padding: 8px 14px 12px;
+        display: grid;
+        gap: 6px;
+        min-width: 220px;
+      }
+      .steps-item {
+        display: flex;
+        gap: 9px;
+        align-items: flex-start;
+      }
+      .steps-item.done .steps-text {
+        color: #8a8d93;
+      }
+      .steps-item.failed .steps-text {
+        color: #b4232a;
+      }
+      .steps-tick {
+        flex: none;
+        width: 16px;
+        height: 16px;
+        margin-top: 1px;
+        text-align: center;
+        line-height: 16px;
+        font-weight: 700;
+        color: #a8abb1;
+      }
+      .steps-item.failed .steps-tick {
+        color: #b4232a;
+      }
+      .steps-item.doing .steps-tick {
+        box-sizing: border-box;
+        border: 2px solid rgba(0, 0, 0, 0.12);
+        border-radius: 50%;
+        animation: steps-spin 0.9s linear infinite;
+      }
+      @keyframes steps-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
       .note-text {
         padding: 8px 14px 12px;
         white-space: pre-wrap;

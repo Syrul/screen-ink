@@ -1,8 +1,9 @@
 // The canvas: the last screenshot fixes the display, coordinate space and element list that drawings use, whether
 // they come from an MCP agent or from the shortcut.
 import { screen, type Display } from 'electron'
-import type { DrawPayload, MarkInput } from '../shared/marks'
-import type { Capture } from './capture'
+import type { DrawPayload, Mark, MarkInput } from '../shared/marks'
+import { displayUnderCursor, type Capture } from './capture'
+import * as lessons from './lessons'
 import * as overlay from './overlay'
 import { fetchPhoto } from './photos'
 import { place, type Element } from './sense'
@@ -43,4 +44,23 @@ export async function draw(args: Drawing): Promise<{ display: Display; drawn: nu
   ).filter(m => m !== null)
   await overlay.draw(d, { ...args, marks, ppu, ink: settings.get().ink })
   return { display: d, drawn: marks.length, missing, failed }
+}
+
+/** Where a drawing that needs no screenshot goes: where the ink is now, else under the mouse. */
+const here = () => overlay.showing() ?? displayUnderCursor()
+
+/** Adds marks that place themselves (no boxes or element ids, like a card in the corner) to the drawing. */
+export async function add(marks: Mark[], fadeAfter?: number): Promise<Display> {
+  const d = here()
+  await overlay.draw(d, { marks, append: true, fadeAfter, ppu: 1, ink: settings.get().ink })
+  return d
+}
+
+/** Draws a saved lesson again. Resolves whether there was one by that id. */
+export async function showLesson(id: string): Promise<boolean> {
+  const d = here()
+  const drawings = lessons.drawings(id, d)
+  if (!drawings) return false
+  for (const p of drawings) await overlay.draw(d, { ...p, ink: settings.get().ink })
+  return true
 }

@@ -1,8 +1,8 @@
 # screen-ink
 
 A companion for Claude Code: a menu-bar app that lets it (or any MCP agent, Codex included) look at your screen
-and draw on it: rings, arrows, name pills, step badges, notes, code cards, charts and flowcharts, animated like a
-pen, plus small 3D figures that build part by part and move, in a transparent click-through overlay, talking you
+and draw on it: rings, arrows, name pills, step badges, notes, checklists, code cards, charts and flowcharts, animated
+like a pen, plus small 3D figures that build part by part and move, in a transparent click-through overlay, talking you
 through it out loud as it draws. Or press **⌥⇧Space**, ask a question, and the Claude Code you have installed
 answers by drawing, signed in as it is. Your own Anthropic API key or Codex can answer instead.
 
@@ -49,7 +49,8 @@ System Settings, and whether the model that answers is ready (`claude auth statu
 
 The rest are the model and effort, web search, checking 3D figures, the shortcut (any
 [accelerator](https://www.electronjs.org/docs/latest/api/accelerator) with a modifier), the ink colour, the
-voice, captions, listening and pen sounds, the `claude mcp add` command, and the licence. Each change is saved as
+voice, captions, listening and pen sounds, what it remembers about you, saved lessons, the `claude mcp add` command,
+and the licence. Each change is saved as
 it is made, to `settings.json` in the app's data folder; an environment variable set at launch (below) wins over
 it for that run.
 
@@ -99,6 +100,19 @@ to left clicks while a step is up; it needs Accessibility), waits a moment for t
 fresh screenshot and asks for the next step, until Claude says it's done. A step nobody clicks goes after five
 minutes; the shortcut or ⌃⌥Esc stops the walk. Without Accessibility the first step is drawn as usual, and asking
 again carries on.
+
+**Memory.** An answer can keep a short fact about you ("uses VS Code with the Vim keys", "is new to Blender"), so
+later conversations start out knowing it. Facts go in `memory.json` in the app's data folder (at most 40, the
+oldest dropped first), are listed in Settings where each can be forgotten, and are given to the model at the start
+of each conversation. It is told never to keep passwords, keys, money, health or other people's details, or anything
+just read off the screen. Off in Settings, nothing is kept or given.
+
+**Handing work to Claude Code.** Ask for work done in a project ("fix this error", "write the script") and the
+answer can offer a button that hands it over: it opens Terminal on your `claude` with the task, in the project's
+folder when the screen showed one inside your home folder (else in your home folder). It's an ordinary interactive
+session, so you watch it and approve its steps as usual. It is connected to screen-ink and asked to keep you posted
+with `progress`, a checklist in the corner of the screen, the one screen-ink tool it may use without asking. The
+task reaches `claude` through a file, never through the shell's parsing. macOS only for now.
 
 The first `screenshot` asks macOS for Screen Recording access. In development the permission belongs to
 **Electron**. Turn it on in System Settings → Privacy & Security → Screen & System Audio Recording, then
@@ -210,6 +224,10 @@ bike's gearing work?"* for a 3D figure.
 | --- | --- |
 | `screenshot` | Screenshot of the display under the mouse (or the main one), without screen-ink's own marks, plus the numbered list of elements on it. Fixes the coordinate space and the ids for `draw`. |
 | `draw` | Draws `marks` in order, plus an optional `caption`. Replaces the current drawing unless `append`; `fadeAfter` seconds makes it fade away. A mark with an `id` can be changed later: with `append`, a mark with the same id replaces it, and `remove` takes marks away by id. |
+| `progress` | A checklist in the corner of the screen (`title`, `steps` with `todo`, `doing`, `done` or `failed`), for keeping the user posted on a task. Needs no screenshot, sits over the rest of the drawing, and fades 20 seconds after every step is done or failed. |
+| `save_lesson` | Keeps the last drawing, with what was appended to it, as a lesson (optional `title`). |
+| `lessons` | Lists the saved lessons. |
+| `show_lesson` | Draws a lesson again by `id`, scaled to the display. Needs no screenshot. |
 | `clear` | Erases everything. |
 
 Marks (coordinates in screenshot units; `box` is `[x, y, w, h]`, points are `[x, y]`). A ring's, label's,
@@ -233,13 +251,14 @@ edge, and a badge sits just left of it.
 | `strike` | `box`: a line through it, for what's wrong or out of date |
 | `connect` | `from`, `to` (boxes), `text`: a curve tying two things together, dots at its ends |
 | `note` | `box` or `at`, `side`, `title`, `text`: a few sentences on a card beside the target |
+| `steps` | `box` or `at`, `side`, `title`, `items` (`text`, `state`): a checklist card with ticks, a spinner and crosses; send it again with the same `id` as things move on |
 | `code` | `box` or `at`, `side`, `code`, `title`, `highlight` (line numbers): a code card with a Copy button |
 | `math` | `box` or `at`, `side`, `tex`: a typeset formula (LaTeX, rendered by [Temml](https://temml.org) to MathML) |
 | `plot` | `box`, `title`, `x`, `y`, `series` (lines of points) or `bars`: a chart on a card, axes scaled to the data |
 | `timeline` | `box`, `title`, `events` (`when`, `text`): events along a line |
 | `flow` | `box`, `title`, `nodes` (`box`, `round` or `diamond`), `edges`, `direction`: a flowchart that lays itself out |
 | `photo` | `box`, `url`, `source`, `caption`: a photo from Wikimedia Commons with its source (below) |
-| `action` | `box` or `at`, `side`, `text`, `do` (`copy`, `open` or `type`), `value`: a button (below) |
+| `action` | `box` or `at`, `side`, `text`, `do` (`copy`, `open`, `type` or `agent`), `value`, `folder`: a button (below) |
 | `figure` | `box`, `title`, `parts`, `labels`, `view`, `turntable`: a 3D model on a card (below) |
 
 Every mark takes `say`, `delay` and `id`, and every mark but `spotlight` takes `color`.
@@ -248,7 +267,14 @@ Every mark takes `say`, `delay` and `id`, and every mark but `spotlight` takes `
 opens a web page (`https:` only) or a System Settings pane (`x-apple.systempreferences:`). `type` types its value
 into the app in front, as if from the keyboard (the overlay never takes focus, so that's the app you were in);
 it needs Accessibility, and a value with a line break is copied instead, so a button can never press Return for
-you. A code card's Copy button and a photo's source link work the same way.
+you. `agent` hands its value, a task, to Claude Code in Terminal, in `folder` if it is in your home folder (see
+[Handing work to Claude Code](#ask-with-the-shortcut)). A code card's Copy button and a photo's source link work
+the same way.
+
+**Lessons.** Lessons → Save the last drawing in the menu, or `save_lesson`, keeps the drawing on screen, with what
+was appended to it since, as a JSON file in the `lessons` folder of the app's data. Pick it from Lessons in the
+menu, Show in Settings, or `show_lesson`, and it draws again on the display under the mouse, scaled to fit, its
+words said again. A `progress` checklist isn't part of it.
 
 **Photos** are fetched by the app, not the overlay page, and only from `upload.wikimedia.org` unless
 `SCREEN_INK_PHOTO_HOSTS` lists others: the address is chosen by a model that has seen your screen, so an open
@@ -340,6 +366,9 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/main/brain.ts](src/main/brain.ts) | Keeps a `claude -p` conversation going and streams its answers; picks the engine |
 | [src/main/answer.ts](src/main/answer.ts) | What an answer is, the system prompt, and what an engine offers |
 | [src/main/codex.ts](src/main/codex.ts) | Codex as the engine: one `codex exec` per question |
+| [src/main/memory.ts](src/main/memory.ts) | Facts about the user kept between conversations |
+| [src/main/handoff.ts](src/main/handoff.ts) | Opens Claude Code in Terminal on a task from an agent button |
+| [src/main/lessons.ts](src/main/lessons.ts) | Follows the drawing on screen, saves it as a lesson, and gives it back to draw again |
 | [src/main/settings.ts](src/main/settings.ts) | Saved settings, the environment's overrides, the encrypted API key |
 | [src/main/settings-window.ts](src/main/settings-window.ts), [src/renderer/settings.ts](src/renderer/settings.ts) | Settings and first-run setup |
 | [src/main/licence.ts](src/main/licence.ts), [scripts/licence.mjs](scripts/licence.mjs) | Offline Ed25519 licence keys |
@@ -357,7 +386,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/renderer/renderer.ts](src/renderer/renderer.ts) | Marks → animated beats |
 | [src/renderer/shapes.ts](src/renderer/shapes.ts) | Hand-drawn geometry |
 | [src/renderer/ink.ts](src/renderer/ink.ts) | The pen: strokes, pills and pop-ins every mark is made of |
-| [src/renderer/cards.ts](src/renderer/cards.ts) | Notes, code, formulas, photos and buttons, as HTML cards |
+| [src/renderer/cards.ts](src/renderer/cards.ts) | Notes, checklists, code, formulas, photos and buttons, as HTML cards |
 | [src/renderer/charts.ts](src/renderer/charts.ts) | Plots, timelines and auto-laid-out flowcharts |
 | [src/renderer/sounds.ts](src/renderer/sounds.ts) | The pen's scratch and tap |
 | [src/renderer/figure.ts](src/renderer/figure.ts) | 3D figures: parts, motion, framing, labels, steps, replay and saving |
@@ -408,3 +437,7 @@ so keep it private.
    so on web pages the list has the text but not the buttons and fields. Asking for it (`AXEnhancedUserInterface`)
    can slow the browser, so it's left off for now.
 4. **Native port.** The renderer is plain web code, so it can move into a WKWebView in a Swift app.
+5. **Hand-off everywhere.** Opening a terminal on Windows and Linux, and letting Codex take a task as well as
+   Claude Code.
+6. **Lessons to step through.** A saved lesson plays straight through; pausing between marks until the user
+   clicks would make it a tutorial.

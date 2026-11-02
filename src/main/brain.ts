@@ -19,6 +19,7 @@ import {
 } from './answer'
 import type { Capture } from './capture'
 import { Codex } from './codex'
+import * as memory from './memory'
 import { describe } from './sense'
 import * as settings from './settings'
 import { AnswerStream } from './stream'
@@ -231,7 +232,7 @@ export async function ask(question: string, shot: Capture, signal: AbortSignal, 
   const stop = () => convo.interrupt()
   signal.addEventListener('abort', stop, { once: true })
   try {
-    if (!settings.checking()) return await convo.ask(question, shot, list, listener)
+    if (!settings.checking()) return kept(await convo.ask(question, shot, list, listener))
     // A figure whose mechanism can't work is held back, with whatever follows it, and Claude is asked once to fix it.
     let held = false
     let passed = 0
@@ -245,17 +246,23 @@ export async function ask(question: string, shot: Capture, signal: AbortSignal, 
       },
     })
     const problems = checkMarks(first.marks)
-    if (!problems.length || signal.aborted) return first
+    if (!problems.length || signal.aborted) return kept(first)
     const bad = first.marks.findIndex(m => m.kind === 'figure' && checkFigure(m).length)
-    const kept = first.marks.slice(0, bad)
-    for (const mark of kept.slice(passed)) listener.onMark?.(mark)
+    const before = first.marks.slice(0, bad)
+    for (const mark of before.slice(passed)) listener.onMark?.(mark)
     listener.onStep?.('Fixing the figure')
     const fixed = await convo.tell(
       `Checking your figure found: ${problems.join(' ')} Answer again with the caption and the marks from that figure on, fixed.`,
       listener,
     )
-    return { caption: fixed.caption || first.caption, marks: [...kept, ...fixed.marks], next: fixed.next ?? first.next }
+    return kept({ ...fixed, caption: fixed.caption || first.caption, marks: [...before, ...fixed.marks], next: fixed.next ?? first.next, remember: fixed.remember ?? first.remember })
   } finally {
     signal.removeEventListener('abort', stop)
   }
+}
+
+/** Keeps what the answer asked to remember. */
+function kept(answer: Answer): Answer {
+  if (answer.remember) memory.remember(answer.remember)
+  return answer
 }

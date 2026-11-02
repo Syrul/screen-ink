@@ -26,3 +26,7 @@ Pick the fewest marks that answer:
 
 For a task of several clicks, draw one step, wait for the user to do it, take a new screenshot, and draw the next.
 Give a mark an `id` to change it later with `append` (same id replaces it) or `remove`. Call `clear` when done.
+
+While you work on something the user is waiting for, keep them posted with `progress`: a checklist in the corner
+of the screen, sent again as each step starts, finishes or fails. It needs no screenshot. When a drawing is worth
+keeping (a lesson they will want again), `save_lesson` keeps it, and `show_lesson` draws it again later.

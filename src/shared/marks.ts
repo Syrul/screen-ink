@@ -226,6 +226,21 @@ export const markSchema = z.discriminatedUnion('kind', [
     .describe('A note card with a few sentences, on calm space beside what it explains.'),
   z
     .object({
+      kind: z.literal('steps'),
+      id: markId,
+      ...near,
+      title: z.string().max(60).optional(),
+      items: z
+        .array(z.object({ text: z.string().max(120), state: z.enum(['todo', 'doing', 'done', 'failed']).optional().describe('Default: todo.') }))
+        .min(1)
+        .max(12),
+      color,
+      delay,
+      say,
+    })
+    .describe('A checklist card: steps with a tick when done, a spinner on the one under way, a cross when it failed. Send it again with the same id as things move on.'),
+  z
+    .object({
       kind: z.literal('code'),
       id: markId,
       ...near,
@@ -307,16 +322,23 @@ export const markSchema = z.discriminatedUnion('kind', [
       id: markId,
       ...near,
       text: z.string().max(30).describe('The button\'s words, like "Copy command" or "Open Privacy settings".'),
-      do: z.enum(['copy', 'open', 'type']),
+      do: z.enum(['copy', 'open', 'type', 'agent']),
       value: z
         .string()
         .max(2000)
-        .describe('copy: the text; open: an https address, or a System Settings pane (x-apple.systempreferences:…); type: the text, typed into the app in front (Return is never pressed).'),
+        .describe(
+          'copy: the text; open: an https address, or a System Settings pane (x-apple.systempreferences:…); type: the text, typed into ' +
+            'the app in front (Return is never pressed); agent: the task, said in full, for Claude Code to do.',
+        ),
+      folder: z.string().max(400).optional().describe('agent: the project folder the task is in (an absolute path), when the screen shows it.'),
       color,
       delay,
       say,
     })
-    .describe('A button the user can click to copy text, open a page or settings pane, or type text into the app in front. Nothing happens unless they click it.'),
+    .describe(
+      'A button the user can click to copy text, open a page or settings pane, type text into the app in front, or hand a task to ' +
+        'Claude Code (it opens in a Terminal window, where they watch it work and approve its steps). Nothing happens unless they click it.',
+    ),
   z
     .object({
       kind: z.literal('figure'), id: markId,

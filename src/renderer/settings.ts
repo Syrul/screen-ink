@@ -11,6 +11,8 @@ declare global {
       setKey(key: string | null): Promise<boolean>
       setLicence(key: string): Promise<LicenceState | null>
       grant(what: 'screen' | 'accessibility' | 'microphone'): Promise<void>
+      forget(id: string | null): Promise<void>
+      lesson(id: string, what: 'show' | 'delete'): Promise<void>
       copy(text: string): Promise<void>
       link(url: string): Promise<void>
       relaunch(): Promise<void>
@@ -165,7 +167,7 @@ $('key-save').addEventListener('click', async () => {
 // ---- Fields that save as they change
 
 const TEXT: (keyof Settings)[] = ['model', 'codexModel', 'claude', 'codex', 'hotkey']
-const CHECKS: (keyof Settings)[] = ['speak', 'captions', 'listen', 'sounds']
+const CHECKS: (keyof Settings)[] = ['speak', 'captions', 'listen', 'sounds', 'memory']
 const SELECTS: (keyof Settings)[] = ['effort', 'check', 'voice']
 
 for (const k of TEXT) $(k).addEventListener('change', () => void save({ [k]: $(k).value.trim() }))
@@ -186,6 +188,67 @@ function renderFields(v: View): void {
   for (const k of SELECTS) $<HTMLSelectElement>(k).value = String(s[k])
   $('ink').value = s.ink
   $('web').checked = /\bWebSearch\b/.test(s.tools)
+}
+
+// ---- Memory
+
+function renderMemory(v: View): void {
+  $<HTMLDivElement>('memories').replaceChildren(
+    ...v.memories.map(m => {
+      const row = document.createElement('div')
+      row.className = 'row'
+      const what = document.createElement('div')
+      what.className = 'what'
+      what.textContent = m.text
+      const small = document.createElement('small')
+      small.textContent = `Kept ${m.at}`
+      what.append(small)
+      const forget = document.createElement('button')
+      forget.textContent = 'Forget'
+      forget.addEventListener('click', async () => {
+        await bridge.forget(m.id)
+        await refresh()
+      })
+      row.append(what, forget)
+      return row
+    }),
+  )
+  $('forget-row').classList.toggle('hidden', !v.memories.length)
+  $('memory-count').textContent = `${v.memories.length} kept`
+}
+
+$('forget-all').addEventListener('click', async () => {
+  await bridge.forget(null)
+  await refresh()
+})
+
+// ---- Lessons
+
+function renderLessons(v: View): void {
+  $<HTMLDivElement>('lessons').replaceChildren(
+    ...v.lessons.map(l => {
+      const row = document.createElement('div')
+      row.className = 'row'
+      const what = document.createElement('div')
+      what.className = 'what'
+      what.textContent = l.title
+      const small = document.createElement('small')
+      small.textContent = `Saved ${new Date(l.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`
+      what.append(small)
+      const buttons = (['show', 'delete'] as const).map(act => {
+        const b = document.createElement('button')
+        b.textContent = act === 'show' ? 'Show' : 'Delete'
+        b.addEventListener('click', async () => {
+          await bridge.lesson(l.id, act)
+          if (act === 'delete') await refresh()
+        })
+        return b
+      })
+      row.append(what, ...buttons)
+      return row
+    }),
+  )
+  $('lessons-none').classList.toggle('hidden', v.lessons.length > 0)
 }
 
 // ---- Connecting, licence, version
@@ -221,6 +284,8 @@ async function refresh(): Promise<void> {
   renderProviders(view)
   renderFields(view)
   renderLicence(view.licence)
+  renderMemory(view)
+  renderLessons(view)
   $('mcp-command').textContent = view.mcp.command
   $('version').textContent = `screen-ink ${view.version}`
 }

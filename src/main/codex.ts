@@ -156,7 +156,7 @@ export class Codex implements Engine {
 /** The answer in Codex's reply, keeping the marks that fit; or why there is none. */
 function parse(reply: string): Answer | string {
   const text = reply.replace(/^```(?:json)?\s*|\s*```$/g, '')
-  let raw: { caption?: unknown; marks?: unknown; next?: unknown }
+  let raw: { caption?: unknown; marks?: unknown; next?: unknown; remember?: unknown }
   try {
     raw = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1))
   } catch {
@@ -168,5 +168,6 @@ function parse(reply: string): Answer | string {
     return ok.success ? [ok.data] : []
   })
   const next = answerSchema.shape.next.safeParse(raw.next ?? undefined)
-  return { caption: raw.caption.slice(0, 400), marks: marks.slice(0, 20), next: next.success ? next.data : undefined }
+  const remember = typeof raw.remember === 'string' ? raw.remember.slice(0, 200) : undefined
+  return { caption: raw.caption.slice(0, 400), marks: marks.slice(0, 20), next: next.success ? next.data : undefined, remember }
 }

@@ -5,8 +5,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { DEMO_CAPTION, DEMO_FIGURE_CAPTION, DEMO_FIGURE_MARKS, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
 import * as ask from './ask'
+import * as canvas from './canvas'
 import { displayUnderCursor } from './capture'
 import { CLEAR_SHORTCUT, PORT } from './config'
+import * as handoff from './handoff'
+import * as lessons from './lessons'
 import { startMcp } from './mcp'
 import * as listen from './listen'
 import * as overlay from './overlay'
@@ -40,6 +43,30 @@ function drawDemo(figure = false): void {
   const d = displayUnderCursor()
   const demo = figure ? { marks: DEMO_FIGURE_MARKS, caption: DEMO_FIGURE_CAPTION, fadeAfter: 15 } : { marks: DEMO_MARKS, caption: DEMO_CAPTION, fadeAfter: 8 }
   void overlay.draw(d, { ...demo, ppu: d.size.width / DEMO_SIZE.width, ink: settings.get().ink })
+}
+
+const LESSONS_IN_MENU = 20
+
+/** Saving the last drawing, and the lessons saved, newest first, to show again. */
+function lessonsMenu(): Electron.MenuItemConstructorOptions[] {
+  const saved = lessons.list()
+  return [
+    {
+      label: 'Save the last drawing',
+      click: () => {
+        try {
+          lessons.save()
+        } catch (e) {
+          console.error(`screen-ink: ${(e as Error).message}`)
+        }
+      },
+    },
+    { type: 'separator' },
+    ...(saved.length
+      ? saved.slice(0, LESSONS_IN_MENU).map(l => ({ label: l.title, click: () => void canvas.showLesson(l.id) }))
+      : [{ label: 'None saved yet', enabled: false }]),
+    ...(saved.length > LESSONS_IN_MENU ? [{ label: 'All lessons…', click: settingsWindow.open }] : []),
+  ]
 }
 
 if (!app.requestSingleInstanceLock()) app.quit()
@@ -81,6 +108,7 @@ app.whenReady().then(() => {
   }
   globalShortcut.register(CLEAR_SHORTCUT, clearInk)
   settingsWindow.init({ mcp: { url, command: addCommand }, registerAsk })
+  handoff.init({ url, token })
   void voice.load()
   void listen.load()
   sense.start()
@@ -94,6 +122,7 @@ app.whenReady().then(() => {
       { label: 'Clear', accelerator: CLEAR_SHORTCUT, click: clearInk },
       { label: 'Draw demo', click: () => drawDemo() },
       { label: 'Draw 3D demo', click: () => drawDemo(true) },
+      { label: 'Lessons', submenu: lessonsMenu() },
       { type: 'separator' },
       { label: 'Speak answers', type: 'checkbox', checked: voice.isOn(), click: item => voice.setOn(item.checked) },
       { label: 'Listen when the bar opens', type: 'checkbox', checked: listen.isOn(), click: item => listen.setOn(item.checked) },
@@ -110,6 +139,7 @@ app.whenReady().then(() => {
     ])
   tray.setContextMenu(menu())
   settings.onChange(() => tray?.setContextMenu(menu())) // checkboxes follow changes made in Settings
+  lessons.onChange(() => tray?.setContextMenu(menu()))
   update.watch(() => tray?.setContextMenu(menu()))
   if (!settings.get().onboarded) {
     settingsWindow.open() // the first run: what to allow, and who answers

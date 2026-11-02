@@ -6,7 +6,7 @@ import { getStroke } from 'perfect-freehand'
 import { speaksCaption } from '../shared/caption'
 import { DEMO_CAPTION, DEMO_FIGURE_CAPTION, DEMO_FIGURE_MARKS, DEMO_MARKS, DEMO_SIZE } from '../shared/demo'
 import type { Box, DrawPayload, Mark, Point } from '../shared/marks'
-import { actionBeats, codeBeats, mathBeats, noteBeats, photoBeats, type Act, type CardHooks, type Outcome, type Place } from './cards'
+import { actionBeats, codeBeats, mathBeats, noteBeats, photoBeats, stepsBeats, type Act, type CardHooks, type Outcome, type Place } from './cards'
 import { flowBeats, plotBeats, timelineBeats } from './charts'
 import { clamp, el, now, UI_FONT, type Beat } from './common'
 import { disposeFigures, figureBeats } from './figure'
@@ -24,7 +24,7 @@ declare global {
       pointer(over: boolean): void
       ask(question: string): void
       save(name: string, usdz: Uint8Array): Promise<string | null>
-      act(what: Act, value: string): Promise<Outcome>
+      act(what: Act, value: string, folder?: string): Promise<Outcome>
     }
   }
 }
@@ -267,6 +267,8 @@ function beatsFor(m: Mark, g: SVGGElement, host: HTMLElement, color: string, P: 
     }
     case 'note':
       return noteBeats(m, color, host, at)
+    case 'steps':
+      return stepsBeats(m, color, host, at)
     case 'code':
       return codeBeats(m, color, host, at, cardHooks)
     case 'math':
@@ -355,8 +357,8 @@ const figureHooks = {
 
 /** A button on a card was clicked. The browser preview only copies. */
 const cardHooks: CardHooks = {
-  act: async (what, value) => {
-    if (window.inkBridge) return window.inkBridge.act(what, value)
+  act: async (what, value, folder) => {
+    if (window.inkBridge) return window.inkBridge.act(what, value, folder)
     if (what !== 'copy') return null
     await navigator.clipboard.writeText(value)
     return 'done'

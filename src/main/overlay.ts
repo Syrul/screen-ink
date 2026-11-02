@@ -1,10 +1,12 @@
 // The overlay: one transparent, click-through window that sits over a whole display, above everything.
-import { app, BrowserWindow, clipboard, ipcMain, shell, type Display } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, screen, shell, type Display } from 'electron'
 import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { speaksCaption, words } from '../shared/caption'
 import type { DrawPayload } from '../shared/marks'
+import * as handoff from './handoff'
+import * as lessons from './lessons'
 import * as sense from './sense'
 import * as settings from './settings'
 import * as voice from './voice'
@@ -80,12 +82,14 @@ ipcMain.handle('ink:save', async (e, name: unknown, usdz: unknown) => {
   return file
 })
 
-// A button the user clicked on a card: copy its text, open its link, or type its text into the app in front (the
-// overlay never takes focus, so that is still the app they were in). Only links to web pages and System Settings
-// open, and text with line breaks is copied rather than typed, so a button can't press Return for anyone.
+// A button the user clicked on a card: copy its text, open its link, type its text into the app in front (the
+// overlay never takes focus, so that is still the app they were in), or hand its task to Claude Code. Only links to
+// web pages and System Settings open, and text with line breaks is copied rather than typed, so a button can't press
+// Return for anyone.
 const OPENABLE = /^(https:\/\/|x-apple\.systempreferences:)/
-ipcMain.handle('ink:act', async (e, what: unknown, value: unknown): Promise<'done' | 'copied' | null> => {
+ipcMain.handle('ink:act', async (e, what: unknown, value: unknown, folder: unknown): Promise<'done' | 'copied' | null> => {
   if (e.sender !== page() || typeof value !== 'string' || value.length > 2000) return null
+  if (what === 'agent') return (await handoff.start(value, typeof folder === 'string' ? folder : undefined)) ? 'done' : null
   if (what === 'copy' || (what === 'type' && /[\r\n]/.test(value))) {
     clipboard.writeText(value)
     return what === 'copy' ? 'done' : 'copied'
@@ -98,9 +102,17 @@ ipcMain.handle('ink:act', async (e, what: unknown, value: unknown): Promise<'don
   return null
 })
 
+/** The display the overlay is drawing on, if it is showing. */
+export function showing(): Display | null {
+  if (!win || win.isDestroyed() || !win.isVisible()) return null
+  const b = win.getBounds()
+  return screen.getAllDisplays().find(d => d.bounds.x === b.x && d.bounds.y === b.y && d.bounds.width === b.width) ?? null
+}
+
 /** Moves the overlay over `display` and draws. */
 export async function draw(display: Display, payload: DrawPayload): Promise<void> {
   const w = overlayWindow()
+  lessons.track(display, payload)
   if (!payload.append) {
     voice.stop()
     voice.forget()

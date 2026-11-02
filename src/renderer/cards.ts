@@ -10,7 +10,7 @@ import { tap } from './sounds'
 
 type Of<K extends Mark['kind']> = Extract<Mark, { kind: K }>
 type Near = { box?: number[]; at?: number[]; side?: 'above' | 'below' | 'left' | 'right' }
-export type Act = 'copy' | 'open' | 'type'
+export type Act = 'copy' | 'open' | 'type' | 'agent'
 /** What came of a click: done as asked, copied instead (text with line breaks isn't typed), or not at all. */
 export type Outcome = 'done' | 'copied' | null
 
@@ -20,8 +20,8 @@ export interface Place {
 }
 
 export interface CardHooks {
-  /** Does what a button says, once the user has clicked it. */
-  act(what: Act, value: string): Promise<Outcome>
+  /** Does what a button says, once the user has clicked it. `folder` is where an agent's task is. */
+  act(what: Act, value: string, folder?: string): Promise<Outcome>
 }
 
 /** Where a w×h card goes: beside its box, at its point, or top right. */
@@ -70,15 +70,15 @@ function title(card: HTMLElement, text: string, color: string): void {
 }
 
 /** A button that does `what` with `value` when clicked, and says so for a moment. */
-function button(text: string, what: Act, value: string, hooks: CardHooks, className: string): HTMLButtonElement {
+function button(text: string, what: Act, value: string, hooks: CardHooks, className: string, folder?: string): HTMLButtonElement {
   const b = document.createElement('button')
   b.className = className
   b.textContent = text
-  b.title = what === 'type' ? `Types: ${value}` : what === 'open' ? `Opens ${value}` : `Copies: ${value}`
-  const done = { copy: 'Copied', open: 'Opened', type: 'Typed' }[what]
+  b.title = { type: `Types: ${value}`, open: `Opens ${value}`, copy: `Copies: ${value}`, agent: `Asks Claude Code, in a new Terminal window: ${value}` }[what]
+  const done = { copy: 'Copied', open: 'Opened', type: 'Typed', agent: 'Started' }[what]
   b.addEventListener('click', async () => {
     b.disabled = true
-    const outcome = await hooks.act(what, value).catch(() => null)
+    const outcome = await hooks.act(what, value, folder).catch(() => null)
     b.textContent = outcome === 'done' ? `${done} ✓` : outcome === 'copied' ? 'Copied ✓' : "Couldn't"
     setTimeout(() => {
       b.textContent = text
@@ -96,6 +96,31 @@ export function noteBeats(m: Of<'note'>, color: string, host: HTMLElement, at: P
         const card = div('ink-card note')
         if (m.title) title(card, m.title, color)
         div('note-text', card, m.text)
+        return card
+      },
+      (w, h) => spot(m, w, h, at),
+    ),
+  ]
+}
+
+const TICKS = { todo: '○', doing: '', done: '✓', failed: '✕' }
+
+export function stepsBeats(m: Of<'steps'>, color: string, host: HTMLElement, at: Place): Beat[] {
+  return [
+    popCard(
+      host,
+      () => {
+        const card = div('ink-card steps')
+        if (m.title) title(card, m.title, color)
+        const list = div('steps-list', card)
+        for (const item of m.items) {
+          const state = item.state ?? 'todo'
+          const row = div(`steps-item ${state}`, list)
+          const tick = div('steps-tick', row, TICKS[state])
+          if (state === 'doing') tick.style.borderTopColor = color
+          if (state === 'done') tick.style.color = color
+          div('steps-text', row, item.text)
+        }
         return card
       },
       (w, h) => spot(m, w, h, at),
@@ -199,7 +224,7 @@ export function actionBeats(m: Of<'action'>, color: string, host: HTMLElement, a
     popCard(
       host,
       () => {
-        const b = button(m.text, m.do, m.value, hooks, 'ink-action interactive')
+        const b = button(m.text, m.do, m.value, hooks, 'ink-action interactive', m.folder)
         b.style.background = color
         return b
       },

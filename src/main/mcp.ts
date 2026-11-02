@@ -9,6 +9,7 @@ import { drawShape } from '../shared/marks'
 import * as canvas from './canvas'
 import { capture, displayUnderCursor, screenAccess } from './capture'
 import { INSTRUCTIONS, NARRATE } from './config'
+import * as lessons from './lessons'
 import * as overlay from './overlay'
 import { describe } from './sense'
 
@@ -18,9 +19,11 @@ export interface InkOptions {
 }
 
 const text = (t: string, isError = false) => ({ content: [{ type: 'text' as const, text: t }], isError })
+const PROGRESS = 'While you work on a task the user is waiting on, keep them posted with progress: it needs no screenshot.'
+const PROGRESS_FADE = 20 // seconds the checklist stays once every step is done or failed
 
 function buildServer(): McpServer {
-  const server = new McpServer({ name: 'screen-ink', version: '0.1.0' }, { instructions: `${INSTRUCTIONS} ${NARRATE}` })
+  const server = new McpServer({ name: 'screen-ink', version: '0.1.0' }, { instructions: `${INSTRUCTIONS} ${NARRATE} ${PROGRESS}` })
 
   server.registerTool(
     'screenshot',
@@ -85,6 +88,65 @@ function buildServer(): McpServer {
       const photos = failed.length ? ` Left out ${failed.length} photo${failed.length === 1 ? '' : 's'}: ${failed.join('; ')}` : ''
       return text(`Drew ${n} mark${n === 1 ? '' : 's'} on display ${d.id}${fade}.${skipped}${photos}${check}`)
     },
+  )
+
+  server.registerTool(
+    'progress',
+    {
+      title: 'Show progress',
+      description:
+        "Shows a checklist in the corner of the user's screen to keep them posted on a task while you work: call it with your " +
+        'plan as a few short steps, then again with the whole list whenever a step starts, finishes or fails. It needs no screenshot, ' +
+        'sits over whatever else is drawn, and fades a little after every step is done or failed.',
+      inputSchema: {
+        title: z.string().max(60).optional().describe('The task, in a few words.'),
+        steps: z
+          .array(z.object({ text: z.string().max(120), state: z.enum(['todo', 'doing', 'done', 'failed']).optional().describe('Default: todo.') }))
+          .min(1)
+          .max(12),
+      },
+    },
+    async ({ title, steps }) => {
+      const finished = steps.every(s => s.state === 'done' || s.state === 'failed')
+      const d = await canvas.add([{ kind: 'steps', id: 'progress', title, items: steps }], finished ? PROGRESS_FADE : undefined)
+      return text(`Showing ${steps.length} step${steps.length === 1 ? '' : 's'} on display ${d.id}${finished ? `, fading in ${PROGRESS_FADE}s` : ''}.`)
+    },
+  )
+
+  server.registerTool(
+    'save_lesson',
+    {
+      title: 'Keep this drawing',
+      description: 'Saves the last drawing (with what was added to it) as a lesson the user can show again from the menu, or you with show_lesson.',
+      inputSchema: { title: z.string().max(80).optional().describe('What it teaches. Default: from its own words.') },
+    },
+    async ({ title }) => {
+      try {
+        const l = lessons.save(title)
+        return l ? text(`Saved "${l.title}" as lesson ${l.id}.`) : text('Nothing has been drawn yet.', true)
+      } catch (e) {
+        return text((e as Error).message, true)
+      }
+    },
+  )
+
+  server.registerTool(
+    'lessons',
+    { title: 'List lessons', description: 'Lists the saved lessons, newest first.', inputSchema: {}, annotations: { readOnlyHint: true } },
+    async () => {
+      const all = lessons.list()
+      return text(all.length ? all.map(l => `${l.id}: ${l.title} (${l.at.slice(0, 10)})`).join('\n') : 'No lessons saved yet.')
+    },
+  )
+
+  server.registerTool(
+    'show_lesson',
+    {
+      title: 'Show a lesson',
+      description: 'Draws a saved lesson again, scaled to the display, replacing what is drawn. It needs no screenshot.',
+      inputSchema: { id: z.string().max(40).describe('From lessons.') },
+    },
+    async ({ id }) => ((await canvas.showLesson(id)) ? text('Showing it.') : text(`There is no lesson ${id}.`, true)),
   )
 
   server.registerTool(

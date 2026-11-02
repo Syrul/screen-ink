@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { markSchema, target, type MarkInput } from '../shared/marks'
 import type { Capture } from './capture'
 import { INSTRUCTIONS, NARRATE } from './config'
+import * as memory from './memory'
 
 export const answerSchema = z.object({
   caption: z.string().max(400).describe('The answer in one or two short sentences, shown at the bottom of the screen.'),
@@ -12,6 +13,15 @@ export const answerSchema = z.object({
     .describe(
       'In a walkthrough, what the user clicks to finish the step you are showing. screen-ink waits for that click, then shows you ' +
         'the screen again for the next step. Leave it out on the last step, and when the answer is not a walkthrough.',
+    ),
+  remember: z
+    .string()
+    .max(200)
+    .optional()
+    .describe(
+      'A short fact about the user worth knowing next time (the tools they use, how experienced they are, what they prefer), ' +
+        'if this question showed a new one. Only what they would be glad you remembered: never passwords, keys, money, health or ' +
+        "other people's details, and nothing just read off the screen.",
     ),
 })
 export type Answer = z.infer<typeof answerSchema>
@@ -26,11 +36,14 @@ answer from what you found. Don't search for what the screenshot already tells y
 
 const MARKS = `
 Pick the mark that fits what you are saying: check and cross to judge options on screen, strike for what is wrong or
-out of date, connect to tie two things together; a note for a few sentences beside the thing they explain; a code card
-for a command or snippet to copy (highlight the line that matters); math for a formula; a plot, timeline or flow for
-numbers over time, a sequence of events, or how steps lead to each other; a photo from Wikimedia Commons, with its
-source, when seeing the real thing helps; and an action button when the user will want to copy a command, open a page
-or settings pane, or type something into the field in front. Buttons only do what they say, when clicked.`
+out of date, connect to tie two things together; a note for a few sentences beside the thing they explain; a steps
+card for a short list of things to do; a code card for a command or snippet to copy (highlight the line that matters);
+math for a formula; a plot, timeline or flow for numbers over time, a sequence of events, or how steps lead to each
+other; a photo from Wikimedia Commons, with its source, when seeing the real thing helps; and an action button when the
+user will want to copy a command, open a page or settings pane, or type something into the field in front. When they
+ask for work done in a project (fix this error, write the script, refactor this), offer an agent button that hands it
+to Claude Code: the task said in full, and the project's folder when the screen shows it. Buttons only do what they
+say, when clicked.`
 
 const WALKTHROUGH = `
 When the task takes several clicks (changing a setting, finding a menu), walk the user through it: show only the first
@@ -56,7 +69,7 @@ runs through it, and pendulums and bounces keep gravity's time. Turned parts (a 
 are extrudes, bent ones (a hose) are pipes, and a set of like parts is one part with copies; give parts real materials
 where it helps them read (steel, brass, glass). Then walk through it in two to four steps, each saying one thing while
 the figure shows it: cut the housing open, pull the parts apart, focus on the part being talked about, slow the motion
-or move in close. The figure's own say is a short opening; the steps carry the explanation.${MARKS}${WALKTHROUGH}${/\bWebSearch\b/.test(tools) ? WEB : ''}${FOLLOW_UPS}${narrate ? `\n${NARRATE} The caption stays the short written version.` : ''}`
+or move in close. The figure's own say is a short opening; the steps carry the explanation.${MARKS}${WALKTHROUGH}${/\bWebSearch\b/.test(tools) ? WEB : ''}${FOLLOW_UPS}${narrate ? `\n${NARRATE} The caption stays the short written version.` : ''}${memory.brief() ? `\n${memory.brief()}` : ''}`
 
 export const TIMEOUT_MS = 120_000 // for one answer
 export const FOLLOW_UP_MS = 120_000 // how long a conversation waits for the next question

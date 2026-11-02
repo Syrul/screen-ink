@@ -10,6 +10,6 @@ contextBridge.exposeInMainWorld('inkBridge', {
   pointer: (over: boolean) => ipcRenderer.send('ink:pointer', over),
   ask: (question: string) => ipcRenderer.send('ink:ask', question),
   save: (name: string, usdz: Uint8Array): Promise<string | null> => ipcRenderer.invoke('ink:save', name, usdz),
-  act: (what: string, value: string): Promise<'done' | 'copied' | null> => ipcRenderer.invoke('ink:act', what, value),
+  act: (what: string, value: string, folder?: string): Promise<'done' | 'copied' | null> => ipcRenderer.invoke('ink:act', what, value, folder),
   onSaying: (cb: (s: { text: string; seconds: number }) => void) => ipcRenderer.on('ink:saying', (_e, s: { text: string; seconds: number }) => cb(s)),
 })
