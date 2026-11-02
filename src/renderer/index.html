@@ -126,6 +126,7 @@
       /* The build panel: a step of the instructions the user is building from. */
       #build {
         position: fixed;
+        z-index: 2; /* over the cards' full-screen layer, so the mouse finds it; under screen-ink's pointer */
         right: 28px;
         top: 50%;
         transform: translateY(-50%);
