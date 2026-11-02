@@ -9,8 +9,10 @@ import type { Box } from '../shared/marks'
 
 export interface Word {
   t: string
-  /** The height of its line, in page points: it stands in for the font size. */
+  /** The height of its line, in page points. */
   h: number
+  /** Its font size, when the PDF says: else the line's height stands in for it. */
+  size?: number
   /** Page points, top-left origin. */
   box: Box
 }
@@ -42,6 +44,8 @@ const MIN_STEPS = 3 // fewer numbers counting up than this aren't steps
 const FOOT = 0.88 // page numbers sit below this share of the page's height
 const GAP = 12 // points between a step's area and the next one's number
 
+const size = (w: Word) => w.size ?? w.h
+
 /** "1122" for 12, where a PDF draws each digit twice (once for its outline): the number it means. */
 const undoubled = (t: string) => (t.length % 2 === 0 && [...t].every((c, i) => i % 2 || c === t[i + 1]) ? t.replace(/(.)./g, '$1') : null)
 
@@ -57,10 +61,10 @@ function stepNumbers(pages: Page[]): Found[] {
   pages.forEach((p, page) => {
     for (const w of p.words) {
       if (!NUMBER.test(w.t) || w.box[1] > FOOT * p.size[1]) continue
-      const size = Math.round(w.h * 2) / 2
+      const key = Math.round(size(w) * 2) / 2
       const ns = [Number(w.t), ...(undoubled(w.t) ? [Number(undoubled(w.t))] : [])]
-      if (!bySize.has(size)) bySize.set(size, [])
-      bySize.get(size)!.push({ page, ns, box: w.box })
+      if (!bySize.has(key)) bySize.set(key, [])
+      bySize.get(key)!.push({ page, ns, box: w.box })
     }
   })
   let best: Found[] = []
@@ -126,10 +130,10 @@ function areas(page: Page, steps: Found[]): Box[] {
 function counts(page: Page, area: Box): { parts?: number; times?: number } {
   const all = page.words.filter(w => COUNT.test(w.t) && inside(area, middle(w.box)))
   if (!all.length) return {}
-  const small = Math.min(...all.map(w => w.h))
+  const small = Math.min(...all.map(size))
   const n = (w: Word) => Number(COUNT.exec(w.t)![1])
-  const parts = all.filter(w => w.h < small * 1.6).reduce((sum, w) => sum + n(w), 0)
-  const big = all.filter(w => w.h >= small * 1.6)
+  const parts = all.filter(w => size(w) < small * 1.6).reduce((sum, w) => sum + n(w), 0)
+  const big = all.filter(w => size(w) >= small * 1.6)
   return { ...(parts ? { parts } : {}), ...(big.length ? { times: Math.max(...big.map(n)) } : {}) }
 }
 

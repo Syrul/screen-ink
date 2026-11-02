@@ -12,7 +12,7 @@
 //     presses what the app in front has there (how: press, focus or click), or with dry only says what it would press
 //   {"id": 5, "scroll": [x, y], "dx": 0, "dy": -600} → {"id": 5, "trusted": true}
 //     scrolls whatever is at that spot by dy points down (negative) or up, and dx right (negative) or left
-//   {"id": 6, "pdf": "/path/a.pdf"} → {"id": 6, "pages": [{"size": [w, h], "words": [{"t": "12", "h": 31, "box"}]}]}
+//   {"id": 6, "pdf": "/path/a.pdf"} → {"id": 6, "pages": [{"size": [w, h], "words": [{"t": "12", "h": 31, "size": 26, "box"}]}]}
 //     every word on every page of a PDF, with the height of its line and its box in page points, top-left origin
 //   {"id": 7, "pdf": "/path/a.pdf", "page": 0, "width": 1600, "out": "/path/p1.jpg"} → {"id": 7, "rendered": true}
 //     draws one page (counted from 0) that many pixels wide, as a JPEG
@@ -386,6 +386,35 @@ func document(_ path: String) -> PDFDocument? {
 
 /// Every word on each page, with its box in page points (top-left origin). A word's height stands in for its font
 /// size, which is what tells a step number from a page number or a part count.
+/// The font size of each letter of `page`'s text, which PDFKit only gives in its attributed text (and logs about,
+/// so standard error is shut meanwhile).
+func letterSizes(_ page: PDFPage) -> [CGFloat]? {
+  let saved = dup(2), null = open("/dev/null", O_WRONLY)
+  dup2(null, 2)
+  defer { dup2(saved, 2); close(saved); close(null) }
+  guard let a = page.attributedString, a.string == page.string else { return nil }
+  var sizes = [CGFloat](repeating: 0, count: (a.string as NSString).length)
+  a.enumerateAttribute(.font, in: NSRange(location: 0, length: sizes.count)) { font, range, _ in
+    let size = (font as? NSFont)?.pointSize ?? 0
+    for i in range.location..<NSMaxRange(range) { sizes[i] = size }
+  }
+  return sizes
+}
+
+/// A word of the page's text split where its font size changes: a PDF's text can run a big step number straight
+/// into the small "1x" beside it, with no space between.
+func pieces(of range: NSRange, sizes: [CGFloat]?) -> [(NSRange, CGFloat?)] {
+  guard let sizes, NSMaxRange(range) <= sizes.count else { return [(range, nil)] }
+  var out: [(NSRange, CGFloat?)] = []
+  var start = range.location
+  for i in (range.location + 1)..<max(range.location + 1, NSMaxRange(range)) where abs(sizes[i] - sizes[start]) > 0.5 {
+    out.append((NSRange(location: start, length: i - start), sizes[start]))
+    start = i
+  }
+  out.append((NSRange(location: start, length: NSMaxRange(range) - start), sizes[start]))
+  return out
+}
+
 func words(_ path: String) -> [String: Any] {
   guard let doc = document(path) else { return ["error": "not a PDF"] }
   let word = try! NSRegularExpression(pattern: "\\S+")
@@ -394,14 +423,19 @@ func words(_ path: String) -> [String: Any] {
     guard let page = doc.page(at: i) else { continue }
     let crop = page.bounds(for: .cropBox)
     let text = page.string ?? ""
+    let sizes = letterSizes(page)
     var found: [[String: Any]] = []
     for m in word.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length)) {
-      guard let b = page.selection(for: m.range)?.bounds(for: page), b.height > 0 else { continue }
-      found.append([
-        "t": (text as NSString).substring(with: m.range),
-        "h": tenth(b.height),
-        "box": [b.minX - crop.minX, crop.maxY - b.maxY, b.width, b.height].map(tenth),
-      ])
+      for (range, size) in pieces(of: m.range, sizes: sizes) {
+        guard let b = page.selection(for: range)?.bounds(for: page), b.height > 0 else { continue }
+        var w: [String: Any] = [
+          "t": (text as NSString).substring(with: range),
+          "h": tenth(b.height),
+          "box": [b.minX - crop.minX, crop.maxY - b.maxY, b.width, b.height].map(tenth),
+        ]
+        if let size, size > 0 { w["size"] = tenth(size) }
+        found.append(w)
+      }
     }
     pages.append(["size": [tenth(crop.width), tenth(crop.height)], "words": found])
   }
