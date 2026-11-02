@@ -368,6 +368,30 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/renderer/ask.ts](src/renderer/ask.ts) | The prompt bar: typing, or listening with the words live |
 | [src/renderer/mic.ts](src/renderer/mic.ts) | Records the question at 16 kHz and tells when the speaker has finished |
 
+## Package
+
+```bash
+npm run dist
+```
+
+builds `release/screen-ink-<version>-arm64-mac.zip` with [electron-builder](https://www.electron.build), for the
+Mac you're on (`npm run dist:dir` builds just the `.app`, quicker; `npm run dist:dmg` a disk image, though on
+macOS 27 electron-builder's dmgbuild currently fails at `hdiutil convert`, so the zip is the default). The Swift helper and the native ONNX
+runtime are unpacked beside the app's archive so they can run, the web runtime and source maps are left out, and
+the app is a menu-bar app (`LSUIElement`) with usage strings for the microphone and the screen.
+
+It is **not signed**: `mac.identity` is `null`, so a build never picks up a certificate from your keychain. To
+ship, set `mac.identity` to your Developer ID, turn on `hardenedRuntime` with entitlements for the microphone and
+JIT, and notarize; until then macOS asks the user to open it from System Settings → Privacy & Security, and each
+build counts as a new app for Screen Recording and Accessibility.
+
+**Windows and Linux.** The code runs there without the Mac-only parts: no element list (marks use coordinates),
+no typing buttons or walkthrough clicks, no `say` (Kokoro plays through PowerShell on Windows), and a tray icon
+instead of the ✎ title. `claude` and `codex` must be `.exe`s on `PATH` or set by full path in Settings (npm's
+`.cmd` shims can't be run without a shell), and the plugin's token helper needs a POSIX shell, so on Windows
+set `SCREEN_INK_TOKEN` and use the `claude mcp add` command instead. `electron-builder --win` and `--linux` are
+configured but untested.
+
 ## Security
 
 The server listens on 127.0.0.1 only, requires the bearer token, rejects any request carrying an `Origin`

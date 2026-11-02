@@ -37,7 +37,7 @@ let latest: AbortController | null = null // the last answer, which may still be
 function bar(): BrowserWindow {
   if (win && !win.isDestroyed()) return win
   win = new BrowserWindow({
-    type: 'panel',
+    ...(process.platform === 'darwin' ? { type: 'panel' } : {}), // floats over full-screen apps without taking focus
     show: false,
     frame: false,
     transparent: true,

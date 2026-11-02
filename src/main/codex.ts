@@ -87,7 +87,7 @@ export class Codex implements Engine {
       '-', // the prompt comes on stdin
     ]
     return new Promise((resolve, reject) => {
-      const child = (this.child = spawn(codex, args, { cwd: this.dir, stdio: ['pipe', 'pipe', 'pipe'] }))
+      const child = (this.child = spawn(codex, args, { cwd: this.dir, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }))
       let out = ''
       let err = ''
       let last = ''

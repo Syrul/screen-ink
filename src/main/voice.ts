@@ -95,17 +95,22 @@ export async function speak(text: string, onStart?: (seconds: number) => void): 
   if (mine !== turn) return
   onStart?.(clip?.seconds ?? text.split(/\s+/).length / SAY_WORDS_PER_SECOND)
   if (clip) {
-    await play('afplay', [clip.file])
+    await (process.platform === 'win32'
+      ? play('powershell', ['-NoProfile', '-NonInteractive', '-Command', `(New-Object Media.SoundPlayer '${clip.file.replace(/'/g, "''")}').PlaySync()`])
+      : play('afplay', [clip.file]))
     fs.rm(clip.file, { force: true }, () => {})
-  } else {
+  } else if (process.platform === 'darwin') {
     // The words go in on stdin, so nothing in them can read as a flag.
     await play('say', [...(MAC_VOICE ? ['-v', MAC_VOICE] : []), '-f', '-'], text)
+  } else {
+    // Nothing to say it with until Kokoro is ready: give the caption its time.
+    await new Promise(r => setTimeout(r, (text.split(/\s+/).length / SAY_WORDS_PER_SECOND) * 1000))
   }
 }
 
 function play(command: string, args: string[], input?: string): Promise<void> {
   return new Promise(resolve => {
-    const child = (current = spawn(command, args))
+    const child = (current = spawn(command, args, { windowsHide: true }))
     child.on('error', () => resolve())
     child.on('close', () => {
       if (current === child) current = null

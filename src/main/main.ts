@@ -50,7 +50,9 @@ app.whenReady().then(() => {
   app.dock?.hide()
   const { token, file } = loadToken()
   const url = `http://127.0.0.1:${PORT}/mcp`
-  const addCommand = `claude mcp add --transport http screen-ink ${url} --header "Authorization: Bearer $(cat '${file}')"`
+  // In zsh or bash on a Mac or Linux, in PowerShell on Windows.
+  const read = process.platform === 'win32' ? `Get-Content '${file}'` : `cat '${file}'`
+  const addCommand = `claude mcp add --transport http screen-ink ${url} --header "Authorization: Bearer $(${read})"`
 
   startMcp({ port: PORT, token }).on('error', e => {
     console.error(`screen-ink: can't serve on ${url}: ${e.message}`)

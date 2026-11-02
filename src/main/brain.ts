@@ -63,7 +63,7 @@ class Claude implements Engine {
       '--json-schema', JSON.stringify(ANSWER_JSON_SCHEMA),
     ]
     const env = apiKey ? { ...process.env, ANTHROPIC_API_KEY: apiKey } : process.env
-    const child = (this.child = spawn(claude, args, { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'pipe'] }))
+    const child = (this.child = spawn(claude, args, { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }))
     child.stdout!.on('data', d => {
       const lines = (this.out += d).split('\n')
       this.out = lines.pop() ?? ''

@@ -23,7 +23,8 @@ interface Reply {
   ocr: { text: string; box: Box; confidence: number }[]
 }
 
-const HELPER = path.join(__dirname, 'screen-ink-sense')
+// Packaged, it is unpacked beside the app's archive, since a program inside one can't be run.
+const HELPER = path.join(__dirname, 'screen-ink-sense').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)
 const WAIT_MS = 3000 // the most a question waits for the list; it is usually ready long before
 const MAX_ELEMENTS = 300
 

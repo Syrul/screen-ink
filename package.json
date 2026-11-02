@@ -2,31 +2,92 @@
   "name": "screen-ink",
   "version": "0.1.0",
   "private": true,
-  "description": "A transparent overlay that lets any MCP agent look at your screen and draw on it.",
+  "description": "A companion for Claude Code that draws its answers on your screen.",
   "main": "dist/main.js",
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
     "start": "npm run build && electron .",
-    "preview": "npm run build && open dist/renderer/index.html"
+    "preview": "npm run build && open dist/renderer/index.html",
+    "dist": "npm run build && electron-builder",
+    "dist:dir": "npm run build && electron-builder --dir",
+    "dist:dmg": "npm run build && electron-builder --mac dmg"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "kokoro-js": "^1.2.1",
-    "perfect-freehand": "^1.2.3",
-    "temml": "^0.11.11",
-    "three": "^0.186.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@types/three": "^0.186.0",
     "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
+    "perfect-freehand": "^1.2.3",
+    "temml": "^0.11.11",
+    "three": "^0.186.1",
     "typescript": "^7.0.2"
   },
   "overrides": {
     "sharp": "^0.35.5"
+  },
+  "author": "screen-ink",
+  "build": {
+    "appId": "app.screenink.desktop",
+    "productName": "screen-ink",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "package.json",
+      "!**/*.map",
+      "!**/node_modules/onnxruntime-web/**",
+      "!**/node_modules/@huggingface/transformers/dist/{transformers.js,transformers.min.js,transformers.web.js,transformers.web.min.js,*.wasm}"
+    ],
+    "asarUnpack": [
+      "dist/screen-ink-sense",
+      "**/*.node",
+      "**/node_modules/onnxruntime-node/bin/**",
+      "**/node_modules/@img/**"
+    ],
+    "mac": {
+      "target": [
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.png",
+      "identity": null,
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSMicrophoneUsageDescription": "screen-ink listens when you ask a question out loud. The audio is turned into text on this Mac.",
+        "NSScreenCaptureUsageDescription": "screen-ink looks at your screen when you ask about it, to draw the answer in the right place."
+      },
+      "files": [
+        "!**/node_modules/onnxruntime-node/bin/napi-v3/{linux,win32}/**"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.png",
+      "files": [
+        "!**/node_modules/onnxruntime-node/bin/napi-v3/{linux,darwin}/**"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Utility",
+      "files": [
+        "!**/node_modules/onnxruntime-node/bin/napi-v3/{darwin,win32}/**"
+      ]
+    }
   }
 }

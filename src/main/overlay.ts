@@ -17,7 +17,7 @@ let loaded: Promise<void> = Promise.resolve()
 function overlayWindow(): BrowserWindow {
   if (win && !win.isDestroyed()) return win
   win = new BrowserWindow({
-    type: 'panel',
+    ...(process.platform === 'darwin' ? { type: 'panel' } : {}), // floats over full-screen apps without taking focus
     show: false,
     frame: false,
     transparent: true,

@@ -39,6 +39,8 @@ export interface Settings {
   onboarded: boolean
   /** A licence key, as pasted. */
   licence: string
+  /** Whether answers may keep short facts about the user for later conversations (memory.ts). */
+  memory: boolean
 }
 
 const DEFAULTS: Settings = {
@@ -59,6 +61,7 @@ const DEFAULTS: Settings = {
   hotkey: 'Alt+Shift+Space',
   onboarded: false,
   licence: '',
+  memory: true,
 }
 
 // Electron accelerators: modifiers, then one key. A global shortcut needs a modifier, or it would take a key away.

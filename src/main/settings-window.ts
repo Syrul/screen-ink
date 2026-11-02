@@ -54,9 +54,7 @@ export function open(): void {
     minHeight: 480,
     title: 'screen-ink Settings',
     show: false,
-    titleBarStyle: 'hiddenInset',
-    backgroundColor: '#00000000',
-    vibrancy: 'sidebar',
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset', vibrancy: 'sidebar', backgroundColor: '#00000000' } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'settings-preload.js'),
       sandbox: true,
@@ -79,7 +77,7 @@ const from = (e: Electron.IpcMainInvokeEvent) => !!win && !win.isDestroyed() && 
 /** Runs a command briefly and resolves its exit code and output. */
 function run(command: string, args: string[]): Promise<{ code: number | string; out: string }> {
   return new Promise(resolve =>
-    execFile(command, args, { timeout: 8000 }, (err, stdout, stderr) =>
+    execFile(command, args, { timeout: 8000, windowsHide: true }, (err, stdout, stderr) =>
       resolve({ code: err ? ((err as NodeJS.ErrnoException).code ?? 1) : 0, out: `${stdout}${stderr}`.trim() }),
     ),
   )
