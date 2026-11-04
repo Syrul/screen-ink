@@ -50,19 +50,15 @@ System Settings, and whether the model that answers is ready (`claude auth statu
 
 The rest are the model and effort, web search, checking 3D figures, the shortcut (any
 [accelerator](https://www.electronjs.org/docs/latest/api/accelerator) with a modifier), the ink colour, the
-voice, captions, listening and pen sounds, screen-ink's pointer, whether walkthroughs offer to do the clicking, what it remembers about you, saved lessons, the `claude mcp add` command,
-and the licence. Each change is saved as
+voice, captions, listening and pen sounds, screen-ink's pointer, whether walkthroughs offer to do the clicking, what it remembers about you, saved lessons and the `claude mcp add` command.
+Each change is saved as
 it is made, to `settings.json` in the app's data folder; an environment variable set at launch (below) wins over
 it for that run.
 
-**Licence keys** are offline: a key is the buyer's name and email signed with an Ed25519 private key, checked
-against the public key built into the app. `node scripts/licence.mjs keygen <file>` makes the key pair (keep the
-private key out of the repo) and prints the public key for `PUBLIC_KEY` in
-[src/main/licence.ts](src/main/licence.ts); `node scripts/licence.mjs issue <file> --name … --email …` signs a key.
-Nothing is locked without one yet: Settings just shows whose copy it is.
-
-**Updates:** with `SCREEN_INK_UPDATE_FEED` set to an https JSON feed (`{"version": "…", "url": "https://…"}`),
-the app checks it at launch and daily and offers the download in its menu. It doesn't install by itself.
+**Updates:** a packaged app checks this repo's latest
+[GitHub release](https://github.com/Syrul/screen-ink/releases) at launch and daily, and offers the download in its
+menu when the release's tag (`v1.2.0`) is newer than the app. It doesn't install by itself.
+`SCREEN_INK_UPDATE_FEED` points it at another https JSON feed (`{"version": "…", "url": "https://…"}`) instead.
 
 ## Ask with the shortcut
 
@@ -418,8 +414,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
   `SCREEN_INK_CHECK` (`on` or `off`: deep mode, which checks figures and has Claude fix them before they are
   drawn; on by default at `high` effort and above), `SCREEN_INK_SOUNDS=off` (start without pen sounds),
   `SCREEN_INK_DO_IT=off` (walkthroughs don't offer to click their steps), `SCREEN_INK_CURSOR=off` (no screen-ink pointer),
-  `SCREEN_INK_PHOTO_HOSTS` (hosts photos may come from, comma-separated; default `upload.wikimedia.org`), `SCREEN_INK_UPDATE_FEED` (the update feed), `SCREEN_INK_LICENCE_PUBLIC_KEY` (a PEM public key to check licences
-  against in a development run; a packaged app only uses the built-in one), `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
+  `SCREEN_INK_PHOTO_HOSTS` (hosts photos may come from, comma-separated; default `upload.wikimedia.org`), `SCREEN_INK_UPDATE_FEED` (an update feed to use instead of GitHub releases, which also turns checking on in a development run), `SCREEN_INK_DEMO=1` (draw the demo on launch; `3d` draws the 3D demo).
 
 | File | Role |
 | --- | --- |
@@ -440,8 +435,7 @@ glass are lit by a soft studio room so they shine, and keep the ink.
 | [src/renderer/model.ts](src/renderer/model.ts) | The build panel's 3D view: the step drawn, its new parts dropping in and outlined, turned by dragging |
 | [src/main/settings.ts](src/main/settings.ts) | Saved settings, the environment's overrides, the encrypted API key |
 | [src/main/settings-window.ts](src/main/settings-window.ts), [src/renderer/settings.ts](src/renderer/settings.ts) | Settings and first-run setup |
-| [src/main/licence.ts](src/main/licence.ts), [scripts/licence.mjs](scripts/licence.mjs) | Offline Ed25519 licence keys |
-| [src/main/update.ts](src/main/update.ts) | Checks the update feed |
+| [src/main/update.ts](src/main/update.ts) | Checks GitHub releases (or an update feed) for a newer version |
 | [plugin/](plugin) | The Claude Code plugin: the MCP server, its token helper, and the `show` skill |
 | [src/main/stream.ts](src/main/stream.ts) | Picks each finished mark out of the answer's JSON as it is written |
 | [src/main/canvas.ts](src/main/canvas.ts) | The last screenshot's coordinate space, shared by MCP and the shortcut |
@@ -511,3 +505,12 @@ so keep it private.
    Claude Code.
 6. **Lessons to step through.** A saved lesson plays straight through; pausing between marks until the user
    clicks would make it a tutorial.
+
+## Contributing
+
+Issues and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Please report security problems
+privately, as [SECURITY.md](SECURITY.md) describes.
+
+## License
+
+[MIT](LICENSE)
