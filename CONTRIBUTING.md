@@ -16,7 +16,7 @@ npm start
 ```
 
 `npm run preview` opens the overlay in a browser with a demo drawing, which is the quickest way to work on how
-marks look. The README's [Develop](README.md#develop) section lists the environment variables and what each file does.
+marks look. The guide's [Develop](docs/GUIDE.md#develop) section lists the environment variables and what each file does.
 
 ## Before you open a pull request
 
