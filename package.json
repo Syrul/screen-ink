@@ -1,8 +1,14 @@
 {
   "name": "screen-ink",
   "version": "0.1.0",
-  "private": true,
   "description": "A companion for Claude Code that draws its answers on your screen.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Syrul/screen-ink.git"
+  },
+  "homepage": "https://github.com/Syrul/screen-ink#readme",
+  "bugs": "https://github.com/Syrul/screen-ink/issues",
   "main": "dist/main.js",
   "scripts": {
     "build": "node build.mjs",
@@ -33,7 +39,7 @@
   "overrides": {
     "sharp": "^0.35.5"
   },
-  "author": "screen-ink",
+  "author": "Syrul",
   "build": {
     "appId": "app.screenink.desktop",
     "productName": "screen-ink",

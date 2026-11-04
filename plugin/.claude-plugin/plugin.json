@@ -2,6 +2,13 @@
   "name": "screen-ink",
   "version": "0.1.0",
   "description": "Lets Claude Code see your screen and draw on it: rings, arrows, notes, code cards, charts and 3D figures, through the screen-ink app.",
+  "author": {
+    "name": "Syrul",
+    "url": "https://github.com/Syrul"
+  },
+  "homepage": "https://github.com/Syrul/screen-ink",
+  "repository": "https://github.com/Syrul/screen-ink",
+  "license": "MIT",
   "keywords": [
     "screen",
     "draw",
