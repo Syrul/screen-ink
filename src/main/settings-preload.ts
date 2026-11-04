@@ -2,13 +2,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Settings } from './settings'
 import type { View } from './settings-window'
-import type { LicenceState } from './licence'
 
 contextBridge.exposeInMainWorld('settingsBridge', {
   view: (): Promise<View> => ipcRenderer.invoke('settings:view'),
   set: (patch: Partial<Settings>): Promise<{ ok: boolean; message?: string; restart?: boolean }> => ipcRenderer.invoke('settings:set', patch),
   setKey: (key: string | null): Promise<boolean> => ipcRenderer.invoke('settings:key', key),
-  setLicence: (key: string): Promise<LicenceState | null> => ipcRenderer.invoke('settings:licence', key),
   grant: (what: 'screen' | 'accessibility' | 'microphone'): Promise<void> => ipcRenderer.invoke('settings:grant', what),
   forget: (id: string | null): Promise<void> => ipcRenderer.invoke('settings:forget', id),
   lesson: (id: string, what: 'show' | 'delete'): Promise<void> => ipcRenderer.invoke('settings:lesson', id, what),

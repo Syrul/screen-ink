@@ -1,5 +1,4 @@
 // The Settings window: shows what's set up and what isn't, and saves each change as it is made.
-import type { LicenceState } from '../main/licence'
 import type { Settings } from '../main/settings'
 import type { View } from '../main/settings-window'
 
@@ -9,7 +8,6 @@ declare global {
       view(): Promise<View>
       set(patch: Partial<Settings>): Promise<{ ok: boolean; message?: string; restart?: boolean }>
       setKey(key: string | null): Promise<boolean>
-      setLicence(key: string): Promise<LicenceState | null>
       grant(what: 'screen' | 'accessibility' | 'microphone'): Promise<void>
       forget(id: string | null): Promise<void>
       lesson(id: string, what: 'show' | 'delete'): Promise<void>
@@ -251,31 +249,11 @@ function renderLessons(v: View): void {
   $('lessons-none').classList.toggle('hidden', v.lessons.length > 0)
 }
 
-// ---- Connecting, licence, version
+// ---- Connecting, version
 
 $('mcp-copy').addEventListener('click', async () => {
   await bridge.copy(view.mcp.command)
   toast('Copied. Paste it into a terminal.')
-})
-
-function renderLicence(l: LicenceState): void {
-  const [title, text] =
-    l.state === 'licensed'
-      ? [`Licensed to ${l.licence.name}`, `${l.licence.email}, ${l.licence.edition} edition, since ${l.licence.issued}.`]
-      : l.state === 'invalid'
-        ? ["That key isn't valid", 'Check it was pasted whole.']
-        : l.state === 'no-public-key'
-          ? ['Development build', 'This build has no licence key to check against.']
-          : ['Unlicensed', 'Paste the key from your purchase email.']
-  $('licence-title').textContent = title
-  $('licence-text').textContent = text
-}
-
-$('licence-save').addEventListener('click', async () => {
-  const state = await bridge.setLicence($('licence').value)
-  if (!state) return
-  renderLicence(state)
-  if (state.state === 'licensed') $('licence').value = ''
 })
 
 async function refresh(): Promise<void> {
@@ -283,7 +261,6 @@ async function refresh(): Promise<void> {
   renderSetup(view)
   renderProviders(view)
   renderFields(view)
-  renderLicence(view.licence)
   renderMemory(view)
   renderLessons(view)
   $('mcp-command').textContent = view.mcp.command

@@ -1,13 +1,11 @@
 // The Settings window, which is also the first-run setup: what macOS must allow, whether the model that answers is
-// signed in, the choices in settings.ts, what is remembered, saved lessons, connecting an agent over MCP, and the
-// licence.
+// signed in, the choices in settings.ts, what is remembered, saved lessons, and connecting an agent over MCP.
 import { app, BrowserWindow, clipboard, desktopCapturer, ipcMain, shell, systemPreferences } from 'electron'
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import * as canvas from './canvas'
 import { screenAccess } from './capture'
 import * as lessons from './lessons'
-import * as licence from './licence'
 import * as memory from './memory'
 import * as settings from './settings'
 import type { Settings } from './settings'
@@ -25,7 +23,6 @@ export interface View {
   status: Status
   keyHint: string | null
   mcp: { url: string; command: string }
-  licence: licence.LicenceState
   memories: memory.Memory[]
   lessons: lessons.Summary[]
   version: string
@@ -128,7 +125,6 @@ async function view(): Promise<View> {
     },
     keyHint: key ? `…${key.slice(-4)}` : null,
     mcp: hooks!.mcp,
-    licence: licence.state(s.licence),
     memories: memory.list(),
     lessons: lessons.list(),
     version: app.getVersion(),
@@ -160,13 +156,6 @@ ipcMain.handle('settings:set', (e, patch: unknown) => {
 ipcMain.handle('settings:key', (e, key: unknown) => {
   if (!from(e) || (key !== null && typeof key !== 'string')) return false
   return settings.setApiKey(key)
-})
-
-ipcMain.handle('settings:licence', (e, key: unknown) => {
-  if (!from(e) || typeof key !== 'string') return null
-  const now = licence.state(key)
-  if (now.state === 'licensed' || !key.trim()) settings.set({ licence: key.trim() })
-  return now
 })
 
 // Asks macOS for a permission, the first time, and opens its pane in System Settings.

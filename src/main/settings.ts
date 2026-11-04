@@ -37,8 +37,6 @@ export interface Settings {
   hotkey: string
   /** Whether the first-run setup has been seen. */
   onboarded: boolean
-  /** A licence key, as pasted. */
-  licence: string
   /** Whether answers may keep short facts about the user for later conversations (memory.ts). */
   memory: boolean
   /** Whether walkthroughs offer to click their steps for the user. */
@@ -64,7 +62,6 @@ const DEFAULTS: Settings = {
   ink: '#FF5A36',
   hotkey: 'Alt+Shift+Space',
   onboarded: false,
-  licence: '',
   memory: true,
   doIt: true,
   cursor: true,
